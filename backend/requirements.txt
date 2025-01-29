@@ -1,0 +1,13 @@
+fastapi==0.109.2
+uvicorn==0.27.1
+sqlalchemy==2.0.27
+asyncpg==0.29.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+python-multipart==0.0.9
+python-dotenv==1.0.1
+pydantic[email]==2.6.1
+pytest==8.0.0
+pytest-asyncio==0.23.5
+httpx==0.26.0
