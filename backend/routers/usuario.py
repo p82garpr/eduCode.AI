@@ -67,3 +67,26 @@ async def obtener_alumnos(
 @router.get("/me", response_model=UsuarioResponse)
 async def read_users_me(current_user: Usuario = Depends(get_current_user)):
     return current_user
+
+@router.delete("/{usuario_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def eliminar_usuario(
+    usuario_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    # Obtener el usuario
+    query = select(Usuario).where(Usuario.id == usuario_id)
+    result = await db.execute(query)
+    usuario = result.scalar_one_or_none()
+    
+    if not usuario:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado"
+        )
+    
+    # Eliminar el usuario
+    await db.delete(usuario)
+    await db.commit()
+    
+    return None

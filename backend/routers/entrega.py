@@ -211,3 +211,39 @@ async def calificar_entrega(
     await db.refresh(entrega)
     
     return entrega 
+
+@router.get("/actividad/{actividad_id}/entregas", response_model=List[EntregaResponse])
+async def obtener_entregas_actividad(
+    actividad_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    # Verificar que la actividad existe y cargar las entregas
+    query = (
+        select(Actividad)
+        .join(Actividad.asignatura)
+        .options(selectinload(Actividad.asignatura))
+        .where(Actividad.id == actividad_id)
+    )
+    result = await db.execute(query)
+    actividad = result.scalar_one_or_none()
+    
+    if not actividad:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Actividad no encontrada"
+        )
+    
+    # Verificar que el usuario es el profesor de la asignatura
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR or actividad.asignatura.profesor_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para ver las entregas de esta actividad"
+        )
+    
+    # Obtener solo las entregas sin cargar relaciones adicionales
+    query = select(Entrega).where(Entrega.actividad_id == actividad_id)
+    result = await db.execute(query)
+    entregas = result.scalars().all()
+    
+    return entregas

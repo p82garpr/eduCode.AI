@@ -21,8 +21,8 @@ class EntregaResponse(EntregaBase):
     fecha_entrega: datetime
     calificacion: Optional[float] = None
     comentarios: Optional[str] = None
-    actividad: Optional[ActividadResponse] = None
-    alumno: Optional[UsuarioResponse] = None
+    #actividad: Optional[ActividadResponse] = None
+    #alumno: Optional[UsuarioResponse] = None
 
     class Config:
         from_attributes = True 

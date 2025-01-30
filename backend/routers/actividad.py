@@ -9,7 +9,7 @@ from models.asignatura import Asignatura
 from models.usuario import Usuario, TipoUsuario
 from models.inscripcion import Inscripcion
 from models.entrega import Entrega
-from schemas.actividad import ActividadCreate, ActividadResponse
+from schemas.actividad import ActividadCreate, ActividadResponse, ActividadUpdate
 from security import get_current_user
 from datetime import datetime
 
@@ -146,4 +146,94 @@ async def obtener_actividades_pendientes(
     result = await db.execute(query)
     actividades = result.scalars().all()
     
-    return actividades 
+    return actividades
+
+@router.delete("/{actividad_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def eliminar_actividad(
+    actividad_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    # Verificar que el usuario es profesor
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los profesores pueden eliminar actividades"
+        )
+    
+    # Obtener la actividad y su asignatura
+    query = (
+        select(Actividad)
+        .join(Actividad.asignatura)
+        .options(selectinload(Actividad.asignatura))
+        .where(Actividad.id == actividad_id)
+    )
+    result = await db.execute(query)
+    actividad = result.scalar_one_or_none()
+    
+    if not actividad:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Actividad no encontrada"
+        )
+    
+    # Verificar que el profesor es el de la asignatura
+    if actividad.asignatura.profesor_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para eliminar esta actividad"
+        )
+    
+    # Eliminar la actividad
+    await db.delete(actividad)
+    await db.commit()
+    
+    return None
+
+@router.put("/{actividad_id}", response_model=ActividadResponse)
+async def actualizar_actividad(
+    actividad_id: int,
+    actividad_actualizada: ActividadUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    # Verificar que el usuario es profesor
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los profesores pueden editar actividades"
+        )
+    
+    # Obtener la actividad y su asignatura
+    query = (
+        select(Actividad)
+        .join(Actividad.asignatura)
+        .options(
+            selectinload(Actividad.asignatura)
+        )
+        .where(Actividad.id == actividad_id)
+    )
+    result = await db.execute(query)
+    actividad = result.scalar_one_or_none()
+    
+    if not actividad:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Actividad no encontrada"
+        )
+    
+    # Verificar que el profesor es el de la asignatura
+    if actividad.asignatura.profesor_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para editar esta actividad"
+        )
+    
+    # Actualizar los campos de la actividad
+    for field, value in actividad_actualizada.model_dump(exclude_unset=True).items():
+        setattr(actividad, field, value)
+    
+    await db.commit()
+    await db.refresh(actividad)
+    
+    return actividad 
