@@ -22,7 +22,7 @@ class ActividadResponse(ActividadBase):
     id: int
     fecha_creacion: datetime
     asignatura_id: int
-    asignatura: Optional[AsignaturaResponse] = None
+    #asignatura: Optional[AsignaturaResponse] = None
 
     class Config:
         from_attributes = True

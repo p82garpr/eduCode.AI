@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Path, requests, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -12,6 +12,7 @@ from models.usuario import Usuario, TipoUsuario
 from schemas.entrega import EntregaCreate, EntregaUpdate, EntregaResponse
 from security import get_current_user
 from datetime import datetime
+import httpx
 
 router = APIRouter()
 
@@ -247,3 +248,63 @@ async def obtener_entregas_actividad(
     entregas = result.scalars().all()
     
     return entregas
+
+#Endpoint para evaluar entregas
+@router.put("/evaluar/{entrega_id}", response_model=EntregaResponse)
+async def evaluar_entrega(
+    entrega_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    # Comprobar que el usuario es profesor
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para evaluar entregas"
+        )
+    
+    #TODO REVISAR TODO PORQUE NO FUNCIONA
+    
+    #obtener la actividad
+    query = select(Actividad).where(Actividad.id == actividad_id)
+    result = await db.execute(query)
+    actividad = result.scalar_one_or_none()
+    
+    #obtener la entrega
+    query = select(Entrega).where(Entrega.actividad_id == actividad_id and Entrega.alumno_id == current_user.id)
+    result = await db.execute(query)
+    entrega = result.scalar_one_or_none()
+    
+    if entrega.archivo_entrega is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No has subido ningún archivo"
+        )
+    
+    #conectar con la API y mandarle la entrega
+    try:
+        # Enviar el texto al LM para evaluación
+        lm_response = await httpx.post(
+            "http://localhost:1234/v1/chat/completions",  # Ajusta la URL según tu configuración de LMStudio
+            json={
+                "messages": [
+                    {"role": "system", "content": f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo en base al enunciado siguiente: {actividad.descripcion}"},
+                    {"role": "user", "content": f"{entrega.archivo_entrega}"}
+                ],
+                "temperature": 0.7
+            }
+        )
+
+        lm_response.raise_for_status()  # Lanza un error si la respuesta no es 2xx
+        entrega.comentarios = lm_response.json()["choices"][0]["message"]["content"]
+        
+        # Actualizar la entrega en la base de datos
+        await db.commit()
+        await db.refresh(entrega)
+        return entrega
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en el proceso de evaluación: {str(e)}")
+
+

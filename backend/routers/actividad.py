@@ -237,3 +237,25 @@ async def actualizar_actividad(
     await db.refresh(actividad)
     
     return actividad 
+
+#Endpoint para obtener la actividad con el id
+@router.get("/{actividad_id}", response_model=ActividadResponse)
+async def obtener_actividad(
+    actividad_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    # Verificar que el usuario está logueado
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para ver esta actividad"
+        )
+    # Obtener la actividad
+    query = select(Actividad).where(Actividad.id == actividad_id)
+    result = await db.execute(query)
+    #devolver solamente los campos de la actividad  
+    actividad = result.scalar_one_or_none()
+    return actividad
+  
+
