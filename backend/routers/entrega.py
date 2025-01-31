@@ -12,7 +12,6 @@ from models.usuario import Usuario, TipoUsuario
 from schemas.entrega import EntregaCreate, EntregaUpdate, EntregaResponse
 from security import get_current_user
 from datetime import datetime
-import httpx
 
 router = APIRouter()
 
@@ -252,18 +251,19 @@ async def obtener_entregas_actividad(
 #Endpoint para evaluar entregas
 @router.put("/evaluar/{entrega_id}", response_model=EntregaResponse)
 async def evaluar_entrega(
-    entrega_id: int,
+    actividad_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    # Comprobar que el usuario es profesor
-    if current_user.tipo_usuario != TipoUsuario.PROFESOR:
+    
+    #TODO: REVISAR TODO PORQUE NO FUNCIONA
+    
+    # comprobar que el usuario esta logueado
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes permiso para evaluar entregas"
         )
-    
-    #TODO REVISAR TODO PORQUE NO FUNCIONA
     
     #obtener la actividad
     query = select(Actividad).where(Actividad.id == actividad_id)
@@ -284,7 +284,7 @@ async def evaluar_entrega(
     #conectar con la API y mandarle la entrega
     try:
         # Enviar el texto al LM para evaluación
-        lm_response = await httpx.post(
+        lm_response = requests.post(
             "http://localhost:1234/v1/chat/completions",  # Ajusta la URL según tu configuración de LMStudio
             json={
                 "messages": [
@@ -295,15 +295,11 @@ async def evaluar_entrega(
             }
         )
 
-        lm_response.raise_for_status()  # Lanza un error si la respuesta no es 2xx
         entrega.comentarios = lm_response.json()["choices"][0]["message"]["content"]
-        
         # Actualizar la entrega en la base de datos
         await db.commit()
         await db.refresh(entrega)
         return entrega
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=e.response.status_code, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en el proceso de evaluación: {str(e)}")
 
