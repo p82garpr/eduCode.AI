@@ -12,6 +12,7 @@ from models.usuario import Usuario, TipoUsuario
 from schemas.entrega import EntregaCreate, EntregaUpdate, EntregaResponse
 from security import get_current_user
 from datetime import datetime
+import requests
 
 router = APIRouter()
 
@@ -249,14 +250,14 @@ async def obtener_entregas_actividad(
     return entregas
 
 #Endpoint para evaluar entregas
-@router.put("/evaluar/{entrega_id}", response_model=EntregaResponse)
+@router.put("/evaluarLMS/{entrega_id}", response_model=EntregaResponse)
 async def evaluar_entrega(
-    actividad_id: int,
+    entrega_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
     
-    #TODO: REVISAR TODO PORQUE NO FUNCIONA
+    # Ya funciona   
     
     # comprobar que el usuario esta logueado
     if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
@@ -265,15 +266,18 @@ async def evaluar_entrega(
             detail="No tienes permiso para evaluar entregas"
         )
     
+    
+     #obtener la entrega
+    query = select(Entrega).where(Entrega.id == entrega_id and Entrega.alumno_id == current_user.id)
+    result = await db.execute(query)
+    entrega = result.scalar_one_or_none()
+    
     #obtener la actividad
-    query = select(Actividad).where(Actividad.id == actividad_id)
+    query = select(Actividad).where(Actividad.id == entrega.actividad_id)
     result = await db.execute(query)
     actividad = result.scalar_one_or_none()
     
-    #obtener la entrega
-    query = select(Entrega).where(Entrega.actividad_id == actividad_id and Entrega.alumno_id == current_user.id)
-    result = await db.execute(query)
-    entrega = result.scalar_one_or_none()
+   
     
     if entrega.archivo_entrega is None:
         raise HTTPException(
@@ -287,13 +291,19 @@ async def evaluar_entrega(
         lm_response = requests.post(
             "http://localhost:1234/v1/chat/completions",  # Ajusta la URL según tu configuración de LMStudio
             json={
+                "model": "deepseek-coder-v2-lite-instruct",
                 "messages": [
-                    {"role": "system", "content": f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo en base al enunciado siguiente: {actividad.descripcion}"},
-                    {"role": "user", "content": f"{entrega.archivo_entrega}"}
+                { "role": "system", "content": f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo en base al enunciado siguiente: {actividad.descripcion}"},
+                {"role": "user", "content": f"{entrega.archivo_entrega}"}
                 ],
-                "temperature": 0.7
+                "temperature": 0.7,
+                "max_tokens": -1,
+                "stream": "false"
             }
         )
+        
+        # Verificar si la respuesta fue exitosa
+        lm_response.raise_for_status()  # Lanza una excepción si la respuesta no es exitosa
 
         entrega.comentarios = lm_response.json()["choices"][0]["message"]["content"]
         # Actualizar la entrega en la base de datos
