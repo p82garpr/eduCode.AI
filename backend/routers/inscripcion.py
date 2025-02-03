@@ -96,6 +96,8 @@ async def obtener_mis_inscripciones(
         )
     )
     result = await db.execute(query)
+    
+    
     inscripciones = result.scalars().all()
     return inscripciones
 
