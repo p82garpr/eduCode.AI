@@ -3,12 +3,13 @@ from datetime import datetime
 from typing import Optional
 from schemas.actividad import ActividadResponse
 from schemas.usuario import UsuarioResponse
+from fastapi import UploadFile
 
 class EntregaBase(BaseModel):
-    archivo_entrega: str
+    comentarios: Optional[str] = None
 
 class EntregaCreate(EntregaBase):
-    actividad_id: int
+    pass
 
 class EntregaUpdate(BaseModel):
     calificacion: float
@@ -16,11 +17,12 @@ class EntregaUpdate(BaseModel):
 
 class EntregaResponse(EntregaBase):
     id: int
+    fecha_entrega: datetime
+    calificacion: Optional[int] = None
     actividad_id: int
     alumno_id: int
-    fecha_entrega: datetime
-    calificacion: Optional[float] = None
-    comentarios: Optional[str] = None
+    nombre_archivo: Optional[str] = None
+    tipo_imagen: Optional[str] = None
     #actividad: Optional[ActividadResponse] = None
     #alumno: Optional[UsuarioResponse] = None
 

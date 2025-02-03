@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Path, requests, status
+import re
+from fastapi import APIRouter, Depends, HTTPException, Path, requests, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -13,6 +14,8 @@ from schemas.entrega import EntregaCreate, EntregaUpdate, EntregaResponse
 from security import get_current_user
 from datetime import datetime
 import requests
+import imghdr  # Para verificar el tipo de imagen
+import asyncio
 
 router = APIRouter()
 
@@ -257,8 +260,225 @@ async def evaluar_entrega(
     current_user: Usuario = Depends(get_current_user),
 ):
     
-    # Ya funciona   
+    # comprobar que el usuario esta logueado
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para evaluar entregas"
+        )
     
+    
+    #obtener la entrega
+    query = select(Entrega).where(Entrega.id == entrega_id and Entrega.alumno_id == current_user.id)
+    result = await db.execute(query)
+    entrega = result.scalar_one_or_none()
+    
+    #obtener la actividad
+    query = select(Actividad).where(Actividad.id == entrega.actividad_id)
+    result = await db.execute(query)
+    actividad = result.scalar_one_or_none()
+    
+   
+    
+    if entrega.imagen is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No has subido ningún archivo"
+        )
+
+    #obtener el texto de la imagen
+    texto = await obtener_ocr_entrega(entrega_id, db, current_user)
+    
+    #conectar con la API y mandarle la entrega
+    try:
+
+        # Enviar el texto al LM para evaluación
+        lm_response = requests.post(
+            "http://localhost:1234/v1/chat/completions",  # Ajusta la URL según tu configuración de LMStudio
+            json={
+                "model": "deepseek-coder-v2-lite-instruct",
+                "messages": [
+                { "role": "system", "content": f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo en base al enunciado siguiente: {actividad.descripcion}. También proporciona la nota de la entrega en el formato: Nota: [nota]"},
+                { "role": "user", "content": f"{texto}"}
+                ],
+                "temperature": 0.7,
+                "max_tokens": -1,
+                "stream": "false"
+
+            }
+        )
+        
+        # Verificar si la respuesta fue exitosa
+        lm_response.raise_for_status()  # Lanza una excepción si la respuesta no es exitosa
+
+        entrega.comentarios = lm_response.json()["choices"][0]["message"]["content"]
+        
+        #buscar donde ponga nota:
+        nota = re.search(r'Nota: (\d+)', entrega.comentarios)
+        if nota:
+            entrega.calificacion = int(nota.group(1))
+        else:
+            entrega.calificacion = 0    
+        # Actualizar la entrega en la base de datos
+        await db.commit()
+        await db.refresh(entrega)
+        return entrega
+
+
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en el proceso de evaluación: {str(e)}")
+
+@router.post("/{actividad_id}/entregas", response_model=EntregaResponse)
+async def crear_entrega(
+    actividad_id: int,
+    imagen: UploadFile = File(...),
+    comentarios: str = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    # Verificar que el usuario es un alumno
+    if current_user.tipo_usuario != TipoUsuario.ALUMNO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los alumnos pueden crear entregas"
+        )
+    
+    # Verificar que el archivo es una imagen
+    contenido = await imagen.read()
+    tipo_imagen = imghdr.what(None, contenido)
+    if tipo_imagen not in ['jpeg', 'png', 'gif']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo debe ser una imagen (JPEG, PNG o GIF)"
+        )
+    
+    # Crear la entrega
+    entrega = Entrega(
+        imagen=contenido,
+        tipo_imagen=tipo_imagen,
+        nombre_archivo=imagen.filename,
+        comentarios=comentarios,
+        actividad_id=actividad_id,
+        alumno_id=current_user.id
+    )
+    
+    db.add(entrega)
+    await db.commit()
+    await db.refresh(entrega)
+    
+    return entrega
+
+@router.get("/imagen/{entrega_id}")
+async def obtener_imagen_entrega(
+    entrega_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    # comprobar que este el usuario logueado y que la entrega sea suya
+    
+    
+    # Obtener la entrega
+    query = select(Entrega).where(Entrega.id == entrega_id)
+    result = await db.execute(query)
+    entrega = result.scalar_one_or_none()
+    
+    if not entrega:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entrega no encontrada"
+        )
+    
+    # Verificar permisos (profesor o alumno dueño de la entrega)
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.id != entrega.alumno_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para ver esta entrega"
+        )
+    
+    # Devolver la imagen
+    from fastapi.responses import Response
+    return Response(
+        content=entrega.imagen,
+        media_type=f"image/{entrega.tipo_imagen}"
+    )
+
+@router.get("/ocr/{entrega_id}")
+async def obtener_ocr_entrega(
+    entrega_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    # Obtener la entrega
+    query = select(Entrega).where(Entrega.id == entrega_id)
+    result = await db.execute(query)
+    entrega = result.scalar_one_or_none()
+    
+    if not entrega:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entrega no encontrada"
+        )
+    
+    # Verificar permisos
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.id != entrega.alumno_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para ver esta entrega"
+        )
+    
+    # Configurar los headers para la API de Azure
+    headers = {
+        'Content-Type': 'application/octet-stream',
+        'Ocp-Apim-Subscription-Key': '9TnsLp0OUYoyH25UP7V5n3mb2tSnm54J4WySPu0IKZwEJNY4RnJ7JQQJ99ALAC5RqLJXJ3w3AAAFACOGHcqc'
+    }
+    
+    try:
+        # Enviar la imagen como datos binarios
+        response = requests.post(
+            "https://pruebarafagvision.cognitiveservices.azure.com/vision/v3.2/read/analyze",
+            headers=headers,
+            data=entrega.imagen  # Enviar los bytes directamente
+        )
+        
+        response.raise_for_status()  # Lanzar excepción si hay error
+        
+        # Obtener la URL de operación del header
+        operation_url = response.headers["Operation-Location"]
+        
+        # Esperar a que el análisis termine
+        analysis_result = None
+        while True:
+            result_response = requests.get(
+                operation_url,
+                headers={'Ocp-Apim-Subscription-Key': '9TnsLp0OUYoyH25UP7V5n3mb2tSnm54J4WySPu0IKZwEJNY4RnJ7JQQJ99ALAC5RqLJXJ3w3AAAFACOGHcqc'}
+            )
+            result = result_response.json()
+            
+            if result.get("status") not in ['notStarted', 'running']:
+                analysis_result = result
+                break
+                
+            await asyncio.sleep(1)
+            
+        texto = analysis_result.get("analyzeResult", {}).get("readResults", [{}])[0].get("lines", [])
+        texto = "\n".join([line.get("text", "") for line in texto])
+
+        return texto
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al procesar la imagen: {str(e)}"
+        )
+        
+
+@router.put("/evaluar-ocr/{entrega_id}", response_model=EntregaResponse)
+async def evaluar_entrega(
+    entrega_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
     # comprobar que el usuario esta logueado
     if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
         raise HTTPException(
@@ -279,26 +499,30 @@ async def evaluar_entrega(
     
    
     
-    if entrega.archivo_entrega is None:
+    if entrega.imagen is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No has subido ningún archivo"
         )
+        
+    #obtener el texto de la imagen
+    texto = await obtener_ocr_entrega(entrega_id, db, current_user)
+
     
     #conectar con la API y mandarle la entrega
     try:
+
         # Enviar el texto al LM para evaluación
+        #TODO: Cambiar la URL por la del server de la uco y el puerto que no se cual es 
         lm_response = requests.post(
-            "http://localhost:1234/v1/chat/completions",  # Ajusta la URL según tu configuración de LMStudio
+            "http://192.168.117.196:5000/v1/chat/completions",  # Ajusta la URL según tu configuración de LMStudio
             json={
-                "model": "deepseek-coder-v2-lite-instruct",
+
                 "messages": [
-                { "role": "system", "content": f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo en base al enunciado siguiente: {actividad.descripcion}"},
-                {"role": "user", "content": f"{entrega.archivo_entrega}"}
+                {"role": "system", "content": f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo en base al enunciado siguiente: {actividad.descripcion}"},
+                {"role": "user", "content": f"{texto}"}
                 ],
                 "temperature": 0.7,
-                "max_tokens": -1,
-                "stream": "false"
             }
         )
         
@@ -312,5 +536,3 @@ async def evaluar_entrega(
         return entrega
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en el proceso de evaluación: {str(e)}")
-
-
