@@ -1,6 +1,8 @@
+import 'package:educode/features/auth/presentation/pages/register_page.dart';
+import 'package:educode/features/courses/presentation/pages/home_page.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:go_router/go_router.dart';
+
 import '../providers/auth_provider.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/auth_button.dart';
@@ -140,12 +142,18 @@ class _LoginPageState extends State<LoginPage> {
                           delay: const Duration(milliseconds: 1200),
                           duration: const Duration(milliseconds: 800),
                           child: TextButton(
-                            onPressed: () => context.go('/register'),
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const RegisterPage(),
+                              ),
+                            ),
                             child: Text(
                               '¿No tienes cuenta? Regístrate',
                               style: TextStyle(color: colors.primary),
                             ),
                           ),
+
                         ),
                       ],
                     ),
@@ -167,7 +175,13 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       if (success && mounted) {
-        context.go('/home');
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const HomePage(),
+            maintainState: false,
+          ),
+        );
       }
     }
   }

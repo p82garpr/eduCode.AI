@@ -90,3 +90,31 @@ async def eliminar_usuario(
     await db.commit()
     
     return None
+
+
+# Endpoint para obtener los detalles del usuario dado un id de usuario
+@router.get("/{usuario_id}", response_model=UsuarioResponse)
+async def obtener_usuario(
+    usuario_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    # Comprobar que el usuario está logueado
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para obtener los detalles de este usuario"
+        )
+
+    # Obtener el usuario
+    query = select(Usuario).where(Usuario.id == usuario_id)
+    result = await db.execute(query)
+    usuario = result.scalar_one_or_none()
+
+    if not usuario:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado"
+        )   
+
+    return usuario

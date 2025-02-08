@@ -1,13 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 from typing import List
+from schemas.usuario import UsuarioResponse, UsuarioBase
 from database import get_db
 from models.asignatura import Asignatura
 from models.usuario import Usuario, TipoUsuario
 from schemas.asignatura import AsignaturaCreate, AsignaturaResponse
 from security import get_current_user
+from models.inscripcion import Inscripcion
 
 router = APIRouter()
 
@@ -71,7 +73,12 @@ async def obtener_asignatura(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
-    query = select(Asignatura).where(Asignatura.id == asignatura_id)
+    # Modificar la consulta para incluir la carga de la relación profesor
+    query = (
+        select(Asignatura)
+        .where(Asignatura.id == asignatura_id)
+        .options(selectinload(Asignatura.profesor))
+    )
     result = await db.execute(query)
     asignatura = result.scalar_one_or_none()
     
@@ -157,3 +164,61 @@ async def eliminar_asignatura(
     await db.commit()
     
     return {"message": "Asignatura eliminada"} 
+
+
+# Endpoint para obtener la lista de alumnos inscritos en una asignatura
+@router.get("/{asignatura_id}/alumnos", response_model=List[UsuarioResponse])
+async def obtener_alumnos_asignatura(
+    asignatura_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    try:
+        # Verificar que el usuario es profesor
+        if current_user.tipo_usuario != TipoUsuario.PROFESOR:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Solo los profesores pueden obtener la lista de alumnos"
+            )
+        
+        # Obtener la asignatura y verificar que existe
+        asignatura = await db.get(Asignatura, asignatura_id)
+        if not asignatura:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Asignatura no encontrada"
+            )
+        
+        # Verificar que el profesor es el dueño de la asignatura
+        if asignatura.profesor_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permiso para ver los alumnos de esta asignatura"
+            )
+        
+        # Obtener los alumnos inscritos
+        query = (
+            select(Usuario)
+            .join(Inscripcion, Inscripcion.alumno_id == Usuario.id)
+            .where(
+                Inscripcion.asignatura_id == asignatura_id,
+                Usuario.tipo_usuario == TipoUsuario.ALUMNO
+            )
+        )
+        
+        result = await db.execute(query)
+        alumnos = result.scalars().all()
+        
+        return alumnos
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al obtener los alumnos: {str(e)}"
+        )
+    

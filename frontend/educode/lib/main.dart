@@ -1,20 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'core/routes/app_router.dart';
-import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/providers/auth_provider.dart';
-import 'features/courses/presentation/providers/courses_provider.dart';
+import 'features/courses/presentation/providers/subjects_provider.dart';
+import 'features/courses/data/services/subjects_service.dart';
+import 'features/auth/presentation/pages/login_page.dart';
+import 'features/courses/presentation/pages/home_page.dart';
+import 'core/theme/app_theme.dart';
 
 void main() {
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => CoursesProvider()),
-      ],
-      child: const MyApp(),
-    ),
-  );
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -22,11 +16,26 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'EduCode',
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      routerConfig: appRouter,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+          create: (_) => AuthProvider(context),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => SubjectsProvider(SubjectsService()),
+        ),
+      ],  
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'EduCode',
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        initialRoute: '/login',
+        routes: {
+          '/login': (context) => const LoginPage(),
+          '/home': (context) => const HomePage(),
+        },
+      ),
     );
   }
 }

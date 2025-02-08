@@ -1,18 +1,25 @@
-import 'package:flutter/foundation.dart';
+
 import '../../data/services/auth_service.dart';
 import '../../domain/models/user_model.dart';
+import 'package:flutter/material.dart';
+
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
+  final BuildContext context;
   
   bool _isLoading = false;
   String? _error;
   UserModel? _currentUser;
+  String? _token;
+
+  AuthProvider(this.context);
 
   bool get isLoading => _isLoading;
   String? get error => _error;
   UserModel? get currentUser => _currentUser;
   bool get isAuthenticated => _currentUser != null;
+  String? get token => _token;
 
   Future<bool> login(String email, String password) async {
     try {
@@ -20,14 +27,24 @@ class AuthProvider extends ChangeNotifier {
       _error = null;
       notifyListeners();
 
-      _currentUser = await _authService.login(email, password);
+      // Primero obtenemos el token
+      _token = await _authService.login(email, password);
       
-      _isLoading = false;
-      notifyListeners();
-      return true;
+      // Luego obtenemos la información del usuario
+      if (_token != null) {
+        _currentUser = await _authService.getUserInfo(_token!);
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      }
+
+      throw Exception('No se pudo obtener el token');
+
     } catch (e) {
       _isLoading = false;
       _error = e.toString();
+      _token = null;
+      _currentUser = null;
       notifyListeners();
       return false;
     }
@@ -54,6 +71,7 @@ class AuthProvider extends ChangeNotifier {
 
   void logout() {
     _currentUser = null;
+    _token = null;
     notifyListeners();
   }
 

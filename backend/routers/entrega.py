@@ -16,6 +16,7 @@ from datetime import datetime
 import requests
 import imghdr  # Para verificar el tipo de imagen
 import asyncio
+from fastapi.responses import Response
 
 router = APIRouter()
 
@@ -329,7 +330,7 @@ async def evaluar_entrega(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en el proceso de evaluación: {str(e)}")
 
-@router.post("/{actividad_id}/entregas", response_model=EntregaResponse)
+@router.post("/{actividad_id}/entrega", response_model=EntregaResponse)
 async def crear_entrega(
     actividad_id: int,
     imagen: UploadFile = File(...),
@@ -375,9 +376,6 @@ async def obtener_imagen_entrega(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
-    # comprobar que este el usuario logueado y que la entrega sea suya
-    
-    
     # Obtener la entrega
     query = select(Entrega).where(Entrega.id == entrega_id)
     result = await db.execute(query)
@@ -389,18 +387,18 @@ async def obtener_imagen_entrega(
             detail="Entrega no encontrada"
         )
     
-    # Verificar permisos (profesor o alumno dueño de la entrega)
-    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.id != entrega.alumno_id:
+    if not entrega.imagen:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para ver esta entrega"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="La entrega no tiene imagen"
         )
     
-    # Devolver la imagen
-    from fastapi.responses import Response
+    # Determinar el tipo de contenido basado en el tipo_imagen
+    content_type = f"image/{entrega.tipo_imagen}" if entrega.tipo_imagen else "image/jpeg"
+    
     return Response(
         content=entrega.imagen,
-        media_type=f"image/{entrega.tipo_imagen}"
+        media_type=content_type
     )
 
 @router.get("/ocr/{entrega_id}")
@@ -536,3 +534,55 @@ async def evaluar_entrega(
         return entrega
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en el proceso de evaluación: {str(e)}")
+    
+    #Endpoint para obtener la entrega dado un id de la entrega
+@router.get("/{entrega_id}", response_model=EntregaResponse)
+async def obtener_entrega(
+    entrega_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    # Comprobar que el usuario está logueado
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para obtener entregas"
+        )
+    
+    # Obtener la entrega con todas sus relaciones
+    query = (
+        select(Entrega)
+        .options(
+            selectinload(Entrega.actividad)
+            .selectinload(Actividad.asignatura)
+            .selectinload(Asignatura.profesor),
+            selectinload(Entrega.alumno)
+        )
+        .where(Entrega.id == entrega_id)
+    )
+    result = await db.execute(query)
+    entrega = result.scalar_one_or_none()
+    
+    if not entrega:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entrega no encontrada"
+        )
+    
+    # Verificar permisos
+    if current_user.tipo_usuario == TipoUsuario.ALUMNO and entrega.alumno_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para obtener esta entrega"
+        )
+    elif current_user.tipo_usuario == TipoUsuario.PROFESOR and entrega.actividad.asignatura.profesor_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para obtener esta entrega"
+        )
+    
+    return entrega
+    
+    
+
+

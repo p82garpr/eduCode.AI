@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from typing import List
+from schemas.asignatura import AsignaturaResponse
 from database import get_db
 from models.inscripcion import Inscripcion
 from models.asignatura import Asignatura
@@ -74,7 +75,7 @@ async def crear_inscripcion(
     
     return db_inscripcion
 
-@router.get("/mis-asignaturas", response_model=List[InscripcionResponse])
+@router.get("/mis-asignaturas", response_model=List[AsignaturaResponse])
 async def obtener_mis_inscripciones(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
@@ -86,20 +87,47 @@ async def obtener_mis_inscripciones(
             detail="Solo los alumnos pueden ver sus inscripciones"
         )
     
-    # Usar selectinload para cargar las relaciones de manera explícita
+    # Obtener las asignaturas en las que está inscrito el alumno
     query = (
-        select(Inscripcion)
+        select(Asignatura)
+        .join(Inscripcion, Inscripcion.asignatura_id == Asignatura.id)
         .where(Inscripcion.alumno_id == current_user.id)
         .options(
-            selectinload(Inscripcion.alumno),
-            selectinload(Inscripcion.asignatura).selectinload(Asignatura.profesor)
+            selectinload(Asignatura.profesor)
         )
     )
     result = await db.execute(query)
+    asignaturas = result.scalars().all()
     
+    return asignaturas
+
+@router.get("/mis-asignaturas-impartidas/", response_model=List[AsignaturaResponse])
+async def obtener_mis_inscripciones_impartidas(
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    # Verificar que el usuario es profesor
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los profesores pueden ver sus inscripciones impartidas"
+        )
+        
+    # Buscar las asignaturas que imparte el profesor
+    query = (
+        select(Asignatura)
+        .where(Asignatura.profesor_id == current_user.id)
+        .options(
+            selectinload(Asignatura.profesor)
+        )
+    )
+    result = await db.execute(query)
+    asignaturas = result.scalars().all()
     
-    inscripciones = result.scalars().all()
-    return inscripciones
+    return asignaturas
+        
+    
+
 
 @router.delete("/{asignatura_id}")
 async def eliminar_inscripcion(
