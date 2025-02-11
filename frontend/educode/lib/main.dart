@@ -1,3 +1,4 @@
+import 'package:educode/features/courses/presentation/views/student_activity_submission_page.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'features/auth/presentation/providers/auth_provider.dart';
@@ -22,7 +23,7 @@ class MyApp extends StatelessWidget {
           create: (_) => AuthProvider(context),
         ),
         ChangeNotifierProvider(
-          create: (_) => SubjectsProvider(SubjectsService()),
+          create: (context) => SubjectsProvider(SubjectsService()),
         ),
       ],  
       child: MaterialApp(
@@ -34,6 +35,7 @@ class MyApp extends StatelessWidget {
         routes: {
           '/login': (context) => const LoginPage(),
           '/home': (context) => const HomePage(),
+          '/student-activity-submission': (context) => const StudentActivitySubmissionPage(),
         },
       ),
     );

@@ -7,14 +7,15 @@ class Entrega(Base):
     __tablename__ = "entregas"
     
     id = Column(Integer, primary_key=True, index=True)
-    imagen = Column(LargeBinary)  # Para guardar la imagen
-    tipo_imagen = Column(String)  # Para guardar el tipo MIME de la imagen
-    nombre_archivo = Column(String)  # Para guardar el nombre original del archivo
+    imagen = Column(LargeBinary, nullable=True)  # Para guardar la imagen
+    tipo_imagen = Column(String, nullable=True)  # Para guardar el tipo MIME de la imagen
+    nombre_archivo = Column(String, nullable=True)  # Para guardar el nombre original del archivo
     comentarios = Column(String, nullable=True)
-    calificacion = Column(Integer, nullable=True)
+    calificacion = Column(Float, nullable=True)
     fecha_entrega = Column(DateTime, default=datetime.utcnow)
     actividad_id = Column(Integer, ForeignKey("actividades.id"))
     alumno_id = Column(Integer, ForeignKey("usuarios.id"))
+    texto_ocr = Column(String, nullable=True)  # Nuevo campo para el texto OCR
     
     # Relaciones
     actividad = relationship("Actividad", back_populates="entregas")

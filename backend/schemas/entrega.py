@@ -7,6 +7,8 @@ from fastapi import UploadFile
 
 class EntregaBase(BaseModel):
     comentarios: Optional[str] = None
+    calificacion: Optional[float] = None
+    texto_ocr: Optional[str] = None
 
 class EntregaCreate(EntregaBase):
     pass
@@ -23,6 +25,7 @@ class EntregaResponse(EntregaBase):
     alumno_id: int
     nombre_archivo: Optional[str] = None
     tipo_imagen: Optional[str] = None
+    texto_ocr: Optional[str] = None
     #actividad: Optional[ActividadResponse] = None
     #alumno: Optional[UsuarioResponse] = None
 

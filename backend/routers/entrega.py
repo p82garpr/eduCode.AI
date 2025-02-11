@@ -1,5 +1,5 @@
 import re
-from fastapi import APIRouter, Depends, HTTPException, Path, requests, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Path, requests, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -17,8 +17,15 @@ import requests
 import imghdr  # Para verificar el tipo de imagen
 import asyncio
 from fastapi.responses import Response
+from PIL import Image
+from pydantic import BaseModel
+from typing import Optional
 
 router = APIRouter()
+
+# Crear un modelo para la entrega
+class EntregaCreate(BaseModel):
+    textoOcr: str
 
 @router.post("/", response_model=EntregaResponse)
 async def crear_entrega(
@@ -333,8 +340,7 @@ async def evaluar_entrega(
 @router.post("/{actividad_id}/entrega", response_model=EntregaResponse)
 async def crear_entrega(
     actividad_id: int,
-    imagen: UploadFile = File(...),
-    comentarios: str = None,
+    entrega_data: EntregaCreate,  # Cambiar a usar el modelo
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
@@ -345,21 +351,9 @@ async def crear_entrega(
             detail="Solo los alumnos pueden crear entregas"
         )
     
-    # Verificar que el archivo es una imagen
-    contenido = await imagen.read()
-    tipo_imagen = imghdr.what(None, contenido)
-    if tipo_imagen not in ['jpeg', 'png', 'gif']:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El archivo debe ser una imagen (JPEG, PNG o GIF)"
-        )
-    
-    # Crear la entrega
+    # Crear la entrega con el texto OCR
     entrega = Entrega(
-        imagen=contenido,
-        tipo_imagen=tipo_imagen,
-        nombre_archivo=imagen.filename,
-        comentarios=comentarios,
+        texto_ocr=entrega_data.textoOcr,  # Usar el texto del modelo
         actividad_id=actividad_id,
         alumno_id=current_user.id
     )
@@ -461,6 +455,10 @@ async def obtener_ocr_entrega(
             
         texto = analysis_result.get("analyzeResult", {}).get("readResults", [{}])[0].get("lines", [])
         texto = "\n".join([line.get("text", "") for line in texto])
+        
+        entrega.texto_ocr = texto
+        await db.commit()
+        await db.refresh(entrega)
 
         return texto
         
