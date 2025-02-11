@@ -340,29 +340,81 @@ async def evaluar_entrega(
 @router.post("/{actividad_id}/entrega", response_model=EntregaResponse)
 async def crear_entrega(
     actividad_id: int,
-    entrega_data: EntregaCreate,  # Cambiar a usar el modelo
+    textoOcr: str = Form(...),
+    imagen: UploadFile = File(...),  # Cambiado a requerido y especificado como File
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
-    # Verificar que el usuario es un alumno
-    if current_user.tipo_usuario != TipoUsuario.ALUMNO:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo los alumnos pueden crear entregas"
+    try:
+        # Verificar que el usuario es un alumno
+        if current_user.tipo_usuario != TipoUsuario.ALUMNO:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Solo los alumnos pueden crear entregas"
+            )
+        
+        # Verificar que la actividad existe
+        query = select(Actividad).where(Actividad.id == actividad_id)
+        result = await db.execute(query)
+        actividad = result.scalar_one_or_none()
+        
+        if not actividad:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Actividad no encontrada"
+            )
+
+        # Verificar si ya existe una entrega
+        query = select(Entrega).where(
+            Entrega.actividad_id == actividad_id,
+            Entrega.alumno_id == current_user.id
         )
-    
-    # Crear la entrega con el texto OCR
-    entrega = Entrega(
-        texto_ocr=entrega_data.textoOcr,  # Usar el texto del modelo
-        actividad_id=actividad_id,
-        alumno_id=current_user.id
-    )
-    
-    db.add(entrega)
-    await db.commit()
-    await db.refresh(entrega)
-    
-    return entrega
+        result = await db.execute(query)
+        existing_entrega = result.scalar_one_or_none()
+        
+        if existing_entrega:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Ya existe una entrega para esta actividad"
+            )
+        
+        # Procesar la imagen
+        contenido = await imagen.read()
+        tipo_imagen = imghdr.what(None, contenido)
+        
+        if tipo_imagen not in ['jpeg', 'png', 'gif', 'jpg']:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El archivo debe ser una imagen (JPEG, PNG, GIF o JPG)"
+            )
+        
+        # Crear la entrega con todos los campos
+        entrega = Entrega(
+            texto_ocr=textoOcr,
+            actividad_id=actividad_id,
+            alumno_id=current_user.id,
+            fecha_entrega=datetime.utcnow(),
+            calificacion=None,
+            comentarios=None,
+            imagen=contenido,
+            tipo_imagen=tipo_imagen,
+            nombre_archivo=imagen.filename
+        )
+
+        # Guardar en la base de datos
+        db.add(entrega)
+        await db.commit()
+        await db.refresh(entrega)
+        
+        return entrega
+        
+    except Exception as e:
+        print(f"Error detallado en crear_entrega: {str(e)}")
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al crear la entrega: {str(e)}"
+        )
 
 @router.get("/imagen/{entrega_id}")
 async def obtener_imagen_entrega(
@@ -581,6 +633,57 @@ async def obtener_entrega(
     
     return entrega
     
+@router.post("/ocr/process", response_model=str)
+async def process_image_ocr(
+    image: UploadFile = File(...),  
+    current_user: Usuario = Depends(get_current_user)
+):
+    # Comprobar que el usuario está logueado
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para procesar imágenes OCR"
+        )
     
+    headers = {
+        'Content-Type': 'application/octet-stream',
+        'Ocp-Apim-Subscription-Key': '9TnsLp0OUYoyH25UP7V5n3mb2tSnm54J4WySPu0IKZwEJNY4RnJ7JQQJ99ALAC5RqLJXJ3w3AAAFACOGHcqc'
+    }
+    
+    try:
+        # Enviar la imagen como datos binarios
+        response = requests.post(
+            "https://pruebarafagvision.cognitiveservices.azure.com/vision/v3.2/read/analyze",
+            headers=headers,
+            data=image.file  # Enviar los bytes directamente
+        )
+        
+        response.raise_for_status()  # Lanzar excepción si hay error
+        
+        # Obtener la URL de operación del header
+        operation_url = response.headers["Operation-Location"]
+        
+        # Esperar a que el análisis termine
+        analysis_result = None
+        while True:
+            result_response = requests.get(
+                operation_url,
+                headers={'Ocp-Apim-Subscription-Key': '9TnsLp0OUYoyH25UP7V5n3mb2tSnm54J4WySPu0IKZwEJNY4RnJ7JQQJ99ALAC5RqLJXJ3w3AAAFACOGHcqc'}
+            )
+            result = result_response.json()
+            
+            if result.get("status") not in ['notStarted', 'running']:
+                analysis_result = result
+                break
+                
+            await asyncio.sleep(1)
+            
+        texto = analysis_result.get("analyzeResult", {}).get("readResults", [{}])[0].get("lines", [])
+        texto = "\n".join([line.get("text", "") for line in texto])
+        
+        return texto
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al procesar la imagen: {str(e)}")
+
 
 
