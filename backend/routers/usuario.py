@@ -6,6 +6,11 @@ from database import get_db
 from models.usuario import Usuario, TipoUsuario
 from schemas.usuario import UsuarioCreate, UsuarioResponse
 from security import get_current_user, get_password_hash
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from models.asignatura import Asignatura
+from models.inscripcion import Inscripcion
+from schemas.profile import ProfileResponse
 
 router = APIRouter()
 
@@ -118,3 +123,83 @@ async def obtener_usuario(
         )   
 
     return usuario
+
+@router.get("/usuarios/{user_id}/profile", response_model=ProfileResponse)
+async def get_user_profile(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    # Comprobar que el usuario está logueado
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para obtener el perfil de este usuario"
+        )
+
+    try:
+        # Obtener el usuario con sus relaciones
+        query = (
+            select(Usuario)
+            .where(Usuario.id == user_id)
+            .options(
+                selectinload(Usuario.asignaturas),
+                selectinload(Usuario.inscripciones).selectinload(Inscripcion.asignatura)
+            )
+        )
+        result = await db.execute(query)
+        user = result.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Usuario no encontrado"
+            )
+
+        if user.tipo_usuario == TipoUsuario.PROFESOR:
+            profesor_info = {
+                "id": user.id,
+                "nombre": user.nombre,
+                "apellidos": user.apellidos,
+                "email": user.email,
+                "tipo_usuario": user.tipo_usuario
+            }
+            asignaturas_impartidas = [{
+                "id": asig.id,
+                "nombre": asig.nombre,
+                "descripcion": asig.descripcion,
+                "profesor_id": user.id,
+                "profesor": profesor_info  # Añadimos la info del profesor aquí
+            } for asig in user.asignaturas]
+            asignaturas_inscritas = []
+        else:
+            asignaturas_impartidas = []
+            asignaturas_inscritas = [{
+                "id": insc.asignatura.id,
+                "nombre": insc.asignatura.nombre,
+                "descripcion": insc.asignatura.descripcion,
+                "profesor_id": insc.asignatura.profesor_id,
+                "profesor": {
+                    "id": insc.asignatura.profesor.id,
+                    "nombre": insc.asignatura.profesor.nombre,
+                    "apellidos": insc.asignatura.profesor.apellidos,
+                    "email": insc.asignatura.profesor.email,
+                    "tipo_usuario": insc.asignatura.profesor.tipo_usuario
+                }
+            } for insc in user.inscripciones]
+
+        return {
+            "id": user.id,
+            "nombre": user.nombre,
+            "apellidos": user.apellidos,
+            "email": user.email,
+            "tipo_usuario": user.tipo_usuario,
+            "asignaturas_impartidas": asignaturas_impartidas,
+            "asignaturas_inscritas": asignaturas_inscritas
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al obtener el perfil: {str(e)}"
+        )

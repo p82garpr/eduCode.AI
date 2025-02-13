@@ -2,15 +2,32 @@
     <!-- Permisos existentes -->
     <uses-permission android:name="android.permission.INTERNET"/>
     
-    <!-- Añadir estos permisos -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>    
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 
+    
+
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="*/*" />
+        </intent>
+    </queries>
+
+    
+
     <application
         android:label="educode"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:requestLegacyExternalStorage="true">
         <!-- ... resto del contenido ... -->
     </application>
 </manifest>

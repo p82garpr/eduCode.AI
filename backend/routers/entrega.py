@@ -17,9 +17,12 @@ from datetime import datetime
 import requests
 import imghdr  # Para verificar el tipo de imagen
 import asyncio
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 from google import genai
+import io
+import csv
+
 router = APIRouter()
 
 # Crear un modelo para la entrega
@@ -804,6 +807,83 @@ async def obtener_entregas_alumno_asignatura(
     entregas = result.scalars().all()
     
     return entregas
+
+@router.get("/actividad/{actividad_id}/export-csv")
+async def export_submissions_csv(
+    actividad_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los profesores pueden exportar entregas"
+        )
+
+    # Obtener la actividad y sus entregas
+    query = (
+        select(Actividad)
+        .options(
+            selectinload(Actividad.asignatura)
+            .selectinload(Asignatura.inscripciones)
+            .selectinload(Inscripcion.alumno),
+            selectinload(Actividad.entregas)
+            .selectinload(Entrega.alumno)
+        )
+        .where(Actividad.id == actividad_id)
+    )
+    result = await db.execute(query)
+    actividad = result.scalar_one_or_none()
+
+    if not actividad:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Actividad no encontrada"
+        )
+
+    # Verificar que el profesor tiene acceso a esta actividad
+    if actividad.asignatura.profesor_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para exportar estas entregas"
+        )
+
+    # Crear el CSV en memoria
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Nombre', 'Apellidos', 'Email', 'Calificación', 'Estado', 'Fecha Entrega'])
+
+    # Para cada alumno inscrito en la asignatura
+    for inscripcion in actividad.asignatura.inscripciones:
+        alumno = inscripcion.alumno
+        # Buscar su entrega
+        entrega = next(
+            (e for e in actividad.entregas if e.alumno_id == alumno.id),
+            None
+        )
+
+        writer.writerow([
+            alumno.nombre,
+            alumno.apellidos,
+            alumno.email,
+            entrega.calificacion if entrega else "No entregado",
+            "Entregado" if entrega else "No entregado",
+            entrega.fecha_entrega.strftime("%Y-%m-%d %H:%M:%S") if entrega and entrega.fecha_entrega else "-"
+        ])
+
+    # Rebobinar el buffer
+    output.seek(0)
+    
+    # Generar nombre del archivo
+    filename = f"entregas_{actividad.titulo}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={
+            'Content-Disposition': f'attachment; filename="{filename}"'
+        }
+    )
 
     
 
