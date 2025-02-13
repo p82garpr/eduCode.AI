@@ -1,7 +1,8 @@
+import os
 import re
 from fastapi import APIRouter, Depends, HTTPException, Path, requests, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
 from typing import List
 from models.inscripcion import Inscripcion
@@ -17,10 +18,8 @@ import requests
 import imghdr  # Para verificar el tipo de imagen
 import asyncio
 from fastapi.responses import Response
-from PIL import Image
 from pydantic import BaseModel
-from typing import Optional
-
+from google import genai
 router = APIRouter()
 
 # Crear un modelo para la entrega
@@ -584,8 +583,78 @@ async def evaluar_entrega(
         return entrega
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en el proceso de evaluación: {str(e)}")
+
+@router.put("/evaluar-texto-gemini/{entrega_id}", response_model=EntregaResponse)
+async def evaluar_texto_gemini(
+    entrega_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
     
-    #Endpoint para obtener la entrega dado un id de la entrega
+    #comprobar que el usuario esta logueado
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para evaluar entregas"
+        )
+    
+    
+    # Obtener la entrega
+    query = select(Entrega).where(Entrega.id == entrega_id)
+    result = await db.execute(query)
+    entrega = result.scalar_one_or_none()
+    
+    if not entrega:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entrega no encontrada"
+        )
+    
+    # Obtener la actividad
+    query = select(Actividad).where(Actividad.id == entrega.actividad_id)
+    result = await db.execute(query)
+    actividad = result.scalar_one_or_none()
+    
+    if not actividad:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Actividad no encontrada"
+        )
+        
+    # Obtener el texto de la entrega
+    solucion = entrega.texto_ocr
+    
+    # Conectar con la API de Gemini
+    try:
+        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        response = client.models.generate_content(
+            model = "gemini-1.5-flash",
+            contents = [
+                f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo,pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10, en base al enunciado siguiente: {actividad.descripcion}. La solución es: {solucion}. Al final, quiero que me des la nota de la entrega en formato: Nota: n/10"
+            ]
+        )
+        
+        entrega.comentarios = response.text
+        
+        # Extraer la nota del texto y convertirla a float
+        try:
+            nota_texto = response.text.split("Nota: ")[1].split("/")[0]
+            entrega.calificacion = float(nota_texto)  # Convertir a float
+        except (IndexError, ValueError):
+            # Si no se puede extraer la nota, establecer un valor por defecto
+            entrega.calificacion = 0.0
+        
+        await db.commit()
+        await db.refresh(entrega)
+        return entrega
+    except Exception as e:
+        print(f"Error detallado: {str(e)}")  # Para debugging
+        raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
+    
+
+
+    
+#Endpoint para obtener la entrega dado un id de la entrega
 @router.get("/{entrega_id}", response_model=EntregaResponse)
 async def obtener_entrega(
     entrega_id: int,
@@ -686,4 +755,55 @@ async def process_image_ocr(
         raise HTTPException(status_code=500, detail=f"Error al procesar la imagen: {str(e)}")
 
 
+
+@router.post("/pruebaGemini", response_model=str)
+async def pruebaGemini(
+    prompt: str
+):
+    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    response = client.models.generate_content(
+        model = "gemini-1.5-flash",
+        contents = [prompt])
+    return response.text
+
+# Obtener entregas de un alumno en una asignatura
+@router.get("/alumno/{alumno_id}/asignatura/{asignatura_id}", response_model=List[EntregaResponse])
+async def obtener_entregas_alumno_asignatura(
+    alumno_id: int,
+    asignatura_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    # Comprobar que el usuario está logueado
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para obtener entregas"
+        )
+        
+    # Comprobar que el alumno es quien esta haciendo la petición
+    if current_user.tipo_usuario == TipoUsuario.ALUMNO and alumno_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para obtener las entregas de este alumno"
+        )
+    
+    # Obtener las entregas del alumno en la asignatura
+    query = (
+        select(Entrega)
+        .join(Entrega.actividad)
+        .join(Actividad.asignatura)
+        .where(
+            and_(
+                Entrega.alumno_id == alumno_id,
+                Asignatura.id == asignatura_id
+            )
+        )
+    )
+    result = await db.execute(query)
+    entregas = result.scalars().all()
+    
+    return entregas
+
+    
 
