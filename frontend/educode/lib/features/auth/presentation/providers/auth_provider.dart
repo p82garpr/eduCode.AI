@@ -56,7 +56,15 @@ class AuthProvider extends ChangeNotifier {
       _error = null;
       notifyListeners();
 
-      _currentUser = await _authService.register(name, lastName, email, password);
+      // Registrar al usuario
+      final _currentUser = await _authService.register(name, lastName, email, password);
+
+      // Si el registro es exitoso, iniciar sesión automáticamente
+      final loginSuccess = await login(email, password);
+      
+      if (!loginSuccess) {
+        throw Exception('Error al iniciar sesión automáticamente');
+      }
 
       _isLoading = false;
       notifyListeners();
@@ -78,5 +86,37 @@ class AuthProvider extends ChangeNotifier {
   void clearError() {
     _error = null;
     notifyListeners();
+  }
+
+  Future<bool> updateProfile({
+    required String nombre,
+    required String apellidos,
+    required String email,
+    String? password,
+  }) async {
+    try {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+
+      final updatedUser = await _authService.updateProfile(
+        nombre: nombre,
+        apellidos: apellidos,
+        email: email,
+        password: password,
+        token: _token!,
+      );
+
+      // Actualizamos el usuario actual con los nuevos datos
+      _currentUser = updatedUser;
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _isLoading = false;
+      _error = e.toString();
+      notifyListeners();
+      return false;
+    }
   }
 } 

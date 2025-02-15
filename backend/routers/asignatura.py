@@ -173,52 +173,48 @@ async def obtener_alumnos_asignatura(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
-    try:
-        # Verificar que el usuario es profesor
-        if current_user.tipo_usuario != TipoUsuario.PROFESOR:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Solo los profesores pueden obtener la lista de alumnos"
-            )
-        
-        # Obtener la asignatura y verificar que existe
-        asignatura = await db.get(Asignatura, asignatura_id)
-        if not asignatura:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Asignatura no encontrada"
-            )
-        
-        # Verificar que el profesor es el dueño de la asignatura
-        if asignatura.profesor_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No tienes permiso para ver los alumnos de esta asignatura"
-            )
-        
-        # Obtener los alumnos inscritos
-        query = (
-            select(Usuario)
-            .join(Inscripcion, Inscripcion.alumno_id == Usuario.id)
-            .where(
-                Inscripcion.asignatura_id == asignatura_id,
-                Usuario.tipo_usuario == TipoUsuario.ALUMNO
-            )
-        )
-        
-        result = await db.execute(query)
-        alumnos = result.scalars().all()
-        
-        return alumnos
-
-    except ValueError as e:
+    # Verificar que el usuario es profesor o alumno
+    if current_user.tipo_usuario not in [TipoUsuario.PROFESOR, TipoUsuario.ALUMNO]:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los profesores y alumnos pueden obtener la lista de alumnos"
         )
-    except Exception as e:
+    
+    # Obtener la asignatura con sus inscripciones
+    query_asignatura = (
+        select(Asignatura)
+        .where(Asignatura.id == asignatura_id)
+        .options(selectinload(Asignatura.inscripciones))
+    )
+    result_asignatura = await db.execute(query_asignatura)
+    asignatura = result_asignatura.scalar_one_or_none()
+    
+    if not asignatura:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al obtener los alumnos: {str(e)}"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asignatura no encontrada"
         )
+    
+    # Verificar que el profesor es el dueño de la asignatura o que el alumno está inscrito
+    if (current_user.tipo_usuario == TipoUsuario.PROFESOR and asignatura.profesor_id != current_user.id) or \
+       (current_user.tipo_usuario == TipoUsuario.ALUMNO and not any(i.alumno_id == current_user.id for i in asignatura.inscripciones)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para ver los alumnos de esta asignatura"
+        )
+    
+    # Obtener los alumnos inscritos
+    query = (
+        select(Usuario)
+        .join(Inscripcion, Inscripcion.alumno_id == Usuario.id)
+        .where(
+            Inscripcion.asignatura_id == asignatura_id,
+            Usuario.tipo_usuario == TipoUsuario.ALUMNO
+        )
+    )
+    
+    result = await db.execute(query)
+    alumnos = result.scalars().all()
+    
+    return alumnos
     

@@ -1,4 +1,5 @@
 import 'package:educode/features/auth/presentation/pages/login_page.dart';
+import 'package:educode/features/courses/presentation/pages/home_page.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
@@ -108,17 +109,26 @@ class _RegisterPageState extends State<RegisterPage> {
                 const SizedBox(height: 24),
                 AuthButton(
                   text: 'Registrarse',
-                  onPressed: () {
+                  onPressed: () async {
                     if (_formKey.currentState?.validate() ?? false) {
-                      context.read<AuthProvider>().register(
+                      final success = await context.read<AuthProvider>().register(
                             _emailController.text,
                             _passwordController.text,
                             _nameController.text,
                             _lastNameController.text,
                           );
+                          if (success && mounted) {
+                                Navigator.pushReplacement(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const HomePage(),
+                                    maintainState: false,
+                                  ),
+                                );
+                      } 
                     }
-                  },
-                ),
+                  },  
+                ),  
                 const SizedBox(height: 16),
                 TextButton(
                   onPressed: () {
