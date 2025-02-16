@@ -3,6 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload, joinedload
 from typing import List
+from models.actividad import Actividad
+from models.entrega import Entrega
 from schemas.usuario import UsuarioResponse, UsuarioBase
 from database import get_db
 from models.asignatura import Asignatura
@@ -10,6 +12,10 @@ from models.usuario import Usuario, TipoUsuario
 from schemas.asignatura import AsignaturaCreate, AsignaturaResponse
 from security import get_current_user
 from models.inscripcion import Inscripcion
+from fastapi.responses import Response
+import csv
+from io import StringIO
+from sqlalchemy import func
 
 router = APIRouter()
 
@@ -217,4 +223,112 @@ async def obtener_alumnos_asignatura(
     alumnos = result.scalars().all()
     
     return alumnos
+    
+
+@router.get("/{asignatura_id}/export-csv")
+async def export_subject_csv(
+    asignatura_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    # Verificar que el usuario es profesor
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los profesores pueden exportar las calificaciones"
+        )
+    
+    # Obtener la asignatura y verificar que existe
+    query_asignatura = select(Asignatura).where(Asignatura.id == asignatura_id)
+    result_asignatura = await db.execute(query_asignatura)
+    asignatura = result_asignatura.scalar_one_or_none()
+    
+    if not asignatura:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asignatura no encontrada"
+        )
+    
+    # Verificar que el profesor es el dueño de la asignatura
+    if asignatura.profesor_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para exportar las calificaciones de esta asignatura"
+        )
+
+    # Obtener todos los alumnos inscritos
+    query_alumnos = (
+        select(Usuario)
+        .join(Inscripcion, Inscripcion.alumno_id == Usuario.id)
+        .where(
+            Inscripcion.asignatura_id == asignatura_id,
+            Usuario.tipo_usuario == TipoUsuario.ALUMNO
+        )
+    )
+    result_alumnos = await db.execute(query_alumnos)
+    alumnos = result_alumnos.scalars().all()
+
+    # Obtener todas las actividades de la asignatura
+    query_actividades = select(Actividad).where(Actividad.asignatura_id == asignatura_id)
+    result_actividades = await db.execute(query_actividades)
+    actividades = result_actividades.scalars().all()
+
+    # Crear el CSV
+    output = StringIO()
+    writer = csv.writer(output)
+    
+    # Escribir encabezados
+    headers = ['Nombre', 'Apellidos', 'Email']
+    for actividad in actividades:
+        headers.extend([
+            f'{actividad.titulo} - Estado',
+            f'{actividad.titulo} - Nota'
+        ])
+    headers.append('Nota Media')
+    writer.writerow(headers)
+
+    # Para cada alumno
+    for alumno in alumnos:
+        row = [alumno.nombre, alumno.apellidos, alumno.email]
+        total_notas = 0
+        total_actividades = len(actividades)  # Todas las actividades cuentan
+
+        # Para cada actividad
+        for actividad in actividades:
+            # Obtener la entrega del alumno para esta actividad
+            query_entrega = (
+                select(Entrega)
+                .where(
+                    Entrega.actividad_id == actividad.id,
+                    Entrega.alumno_id == alumno.id
+                )
+            )
+            result_entrega = await db.execute(query_entrega)
+            entrega = result_entrega.scalar_one_or_none()
+
+            if entrega and entrega.calificacion is not None:
+                row.extend(['Entregado', str(entrega.calificacion)])
+                total_notas += entrega.calificacion
+            else:
+                # Si no hay entrega o no está calificada, cuenta como 0
+                row.extend(['No entregado' if not entrega else 'Sin calificar', '0'])
+                # No sumamos nada a total_notas (equivalente a sumar 0)
+
+        # Calcular la nota media usando el total de actividades
+        nota_media = total_notas / total_actividades if total_actividades > 0 else 0
+        row.append(f'{nota_media:.2f}')
+        
+        writer.writerow(row)
+
+    # Preparar la respuesta
+    output.seek(0)
+    response = Response(
+        content=output.getvalue(),
+        media_type='text/csv',
+        headers={
+            'Content-Disposition': f'attachment; filename=calificaciones_{asignatura_id}.csv'
+        }
+    )
+    
+    return response
     
