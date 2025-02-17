@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.pool import NullPool
 from dotenv import load_dotenv
 import os
 
@@ -7,14 +8,32 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-engine = create_async_engine(DATABASE_URL, future=True)
-async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+# Configurar el engine con statement_cache_size=0 y sin pooling
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    poolclass=NullPool,
+    connect_args={
+        "statement_cache_size": 0,  # Deshabilitar el caché de declaraciones preparadas
+    }
+)
+
+# Crear el sessionmaker
+AsyncSessionLocal = sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False
+)
 
 Base = declarative_base()
 
+# Dependency para obtener la sesión de base de datos
 async def get_db():
-    async with async_session() as session:
-        yield session
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
 
 # Añade esta función para crear las tablas
 async def init_db():

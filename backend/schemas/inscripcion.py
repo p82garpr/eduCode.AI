@@ -7,7 +7,7 @@ class InscripcionBase(BaseModel):
     asignatura_id: int
 
 class InscripcionCreate(InscripcionBase):
-    pass
+    codigo_acceso: str
 
 class InscripcionResponse(InscripcionBase):
     id: int

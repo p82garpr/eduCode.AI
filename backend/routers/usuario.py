@@ -190,7 +190,8 @@ async def get_user_profile(
                 "nombre": asig.nombre,
                 "descripcion": asig.descripcion,
                 "profesor_id": user.id,
-                "profesor": profesor_info
+                "profesor": profesor_info,
+                "codigo_acceso": asig.codigo_acceso
             } 
             for asig in user.asignaturas
         ]
@@ -210,6 +211,7 @@ async def get_user_profile(
                 "nombre": insc.asignatura.nombre,
                 "descripcion": insc.asignatura.descripcion,
                 "profesor_id": insc.asignatura.profesor_id,
+                "codigo_acceso": insc.asignatura.codigo_acceso,
                 "profesor": {
                     "id": insc.asignatura.profesor.id,
                     "nombre": insc.asignatura.profesor.nombre,

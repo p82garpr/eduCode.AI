@@ -57,6 +57,7 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
 
       // Registrar al usuario
+      // ignore: unused_local_variable, no_leading_underscores_for_local_identifiers
       final _currentUser = await _authService.register(name, lastName, email, password);
 
       // Si el registro es exitoso, iniciar sesión automáticamente

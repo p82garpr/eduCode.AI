@@ -10,8 +10,11 @@ from models.asignatura import Asignatura
 from models.usuario import Usuario, TipoUsuario
 from schemas.inscripcion import InscripcionCreate, InscripcionResponse
 from security import get_current_user
+from passlib.context import CryptContext
+from sqlalchemy.sql import text
 
 router = APIRouter()
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 @router.post("/", response_model=InscripcionResponse)
 async def crear_inscripcion(
@@ -36,6 +39,15 @@ async def crear_inscripcion(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Asignatura no encontrada"
         )
+        
+        
+    # Verificar que el código de acceso es correcto
+    if not pwd_context.verify(inscripcion.codigo_acceso, asignatura.codigo_acceso):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Código de acceso incorrecto"
+        )
+
     
     # Verificar que el alumno no está ya inscrito
     query = select(Inscripcion).where(
@@ -106,25 +118,21 @@ async def obtener_mis_inscripciones_impartidas(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
-    # Verificar que el usuario es profesor
-    if current_user.tipo_usuario != TipoUsuario.PROFESOR:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo los profesores pueden ver sus inscripciones impartidas"
-        )
+    try:
+        # Limpiar la caché de consultas preparadas
+        await db.execute(text("DEALLOCATE ALL"))
         
-    # Buscar las asignaturas que imparte el profesor
-    query = (
-        select(Asignatura)
-        .where(Asignatura.profesor_id == current_user.id)
-        .options(
-            selectinload(Asignatura.profesor)
+        # Realizar la consulta incluyendo el nuevo campo codigo_acceso
+        query = select(Asignatura).where(Asignatura.profesor_id == current_user.id)
+        result = await db.execute(query)
+        asignaturas = result.scalars().all()
+        
+        return asignaturas
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener las asignaturas impartidas: {str(e)}"
         )
-    )
-    result = await db.execute(query)
-    asignaturas = result.scalars().all()
-    
-    return asignaturas
         
     
 

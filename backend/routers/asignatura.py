@@ -16,8 +16,11 @@ from fastapi.responses import Response
 import csv
 from io import StringIO
 from sqlalchemy import func
+from passlib.context import CryptContext
 
 router = APIRouter()
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 @router.post("/", response_model=AsignaturaResponse)
 async def crear_asignatura(
@@ -32,10 +35,15 @@ async def crear_asignatura(
             detail="Solo los profesores pueden crear asignaturas"
         )
     
+    # Hashear el código de acceso
+    hashed_codigo = pwd_context.hash(asignatura.codigo_acceso)
+    
     # Crear nueva asignatura
     db_asignatura = Asignatura(
-        **asignatura.model_dump(),
-        profesor_id=current_user.id
+        nombre=asignatura.nombre,
+        descripcion=asignatura.descripcion,
+        profesor_id=current_user.id,
+        codigo_acceso=hashed_codigo
     )
     
     db.add(db_asignatura)
@@ -128,8 +136,10 @@ async def actualizar_asignatura(
         )
     
     # Actualizar campos
-    for key, value in asignatura_update.model_dump().items():
-        setattr(db_asignatura, key, value)
+    db_asignatura.nombre = asignatura_update.nombre
+    db_asignatura.descripcion = asignatura_update.descripcion
+    if asignatura_update.codigo_acceso:
+        db_asignatura.codigo_acceso = pwd_context.hash(asignatura_update.codigo_acceso)
     
     await db.commit()
     await db.refresh(db_asignatura)
@@ -332,3 +342,4 @@ async def export_subject_csv(
     
     return response
     
+

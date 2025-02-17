@@ -9,6 +9,7 @@ class Asignatura(Base):
     nombre = Column(String(150), nullable=False)
     descripcion = Column(Text)
     profesor_id = Column(Integer, ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False)
+    codigo_acceso = Column(String(60), nullable=False)
 
     # Solo mantenemos la relación con el profesor por ahora
     profesor = relationship("Usuario", back_populates="asignaturas")
