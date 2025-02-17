@@ -140,21 +140,47 @@ async def obtener_mis_inscripciones_impartidas(
 @router.delete("/{asignatura_id}")
 async def eliminar_inscripcion(
     asignatura_id: int,
+    alumno_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
-    # Verificar que el usuario es alumno
-    if current_user.tipo_usuario != TipoUsuario.ALUMNO:
+    # Verificar que el usuario es profesor o alumno
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo los alumnos pueden cancelar inscripciones"
         )
+        
+    
     
     # Buscar la inscripción
     query = select(Inscripcion).where(
-        Inscripcion.alumno_id == current_user.id,
+        Inscripcion.alumno_id == alumno_id,
         Inscripcion.asignatura_id == asignatura_id
     )
+    
+    # En caso de que el usuario sea alumno, se debe verificar que el alumno sea el que está intentando cancelar la inscripción
+    if current_user.tipo_usuario == TipoUsuario.ALUMNO:
+        if alumno_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No puedes cancelar la inscripción de otro alumno"
+            )
+    # Obtener la asignatura
+    query_asignatura = select(Asignatura).where(
+        Asignatura.id == asignatura_id
+    )
+    result_asignatura = await db.execute(query_asignatura)
+    asignatura = result_asignatura.scalar_one_or_none()
+    
+    # En caso de que el usuario sea profesor, se debe verificar que el profesor sea el que está intentando cancelar la inscripción
+    if current_user.tipo_usuario == TipoUsuario.PROFESOR:
+        if asignatura.profesor_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No puedes cancelar la inscripción de otra asignatura"
+            )
+    
     result = await db.execute(query)
     inscripcion = result.scalar_one_or_none()
     
