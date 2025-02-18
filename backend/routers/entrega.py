@@ -886,4 +886,46 @@ async def export_submissions_csv(
     )
 
     
-
+#Endpoint para obtener las entregas de un alumno en una actividad, es solamente una, no es una lista
+@router.get("/alumno/{alumno_id}/actividad/{actividad_id}", response_model=EntregaResponse)
+async def obtener_entregas_alumno_actividad(
+    alumno_id: int,
+    actividad_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para obtener entregas"
+        )
+    
+    # Obtener las entregas del alumno en la actividad
+    query = (
+        select(Entrega)
+        .join(Entrega.actividad)
+        .where(
+            and_(
+                Entrega.alumno_id == alumno_id,
+                Entrega.actividad_id == actividad_id
+            )
+        )
+    )
+    
+    result = await db.execute(query)
+    entregas = result.scalar_one_or_none()
+    # Si no lo encuentra, lanzar un error
+    if not entregas:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontraron entregas para este alumno en esta actividad"
+        )
+    # Comprobar que el alumno que llama es el alumno de la entrega
+    if current_user.tipo_usuario == TipoUsuario.ALUMNO and alumno_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para obtener las entregas de este alumno"
+        )
+    
+    return entregas
+    

@@ -1,3 +1,11 @@
+import 'package:educode/features/courses/data/services/activity_service.dart';
+import 'package:educode/features/courses/data/services/enrollment_service.dart';
+import 'package:educode/features/courses/data/services/profile_service.dart';
+import 'package:educode/features/courses/data/services/submission_service.dart';
+import 'package:educode/features/courses/presentation/providers/activity_provider.dart';
+import 'package:educode/features/courses/presentation/providers/enrollment_provider.dart';
+import 'package:educode/features/courses/presentation/providers/profile_provider.dart';
+import 'package:educode/features/courses/presentation/providers/submission_provider.dart';
 import 'package:educode/features/courses/presentation/views/student_activity_submission_page.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -24,6 +32,15 @@ class MyApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(
           create: (context) => SubjectsProvider(SubjectsService()),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => EnrollmentProvider(EnrollmentService()),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => SubmissionProvider(SubmissionService()),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => ActivityProvider(ActivityService()),
         ),
       ],  
       child: MaterialApp(

@@ -20,7 +20,7 @@ class EntregaUpdate(BaseModel):
 class EntregaResponse(EntregaBase):
     id: int
     fecha_entrega: datetime
-    calificacion: Optional[int] = None
+    calificacion: Optional[float] = None
     actividad_id: int
     alumno_id: int
     nombre_archivo: Optional[str] = None
