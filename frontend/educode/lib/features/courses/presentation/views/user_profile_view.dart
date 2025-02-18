@@ -1,7 +1,6 @@
 import 'package:educode/features/courses/presentation/providers/profile_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/subjects_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 

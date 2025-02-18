@@ -44,6 +44,7 @@ class SubjectDetailView extends StatefulWidget {
 
 class _SubjectDetailViewState extends State<SubjectDetailView> {
   late List<ActivityModel> _activities;
+  // ignore: unused_field
   bool _isLoading = false;
 
   @override

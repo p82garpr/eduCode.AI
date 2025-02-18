@@ -217,7 +217,7 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
         });
 
         // Procesar la imagen con OCR
-        // ignore: use_build_context_synchronously
+        // ignore: use_build_context_synchronously, unused_local_variable
         final provider = context.read<SubjectsProvider>();
         // ignore: use_build_context_synchronously
         final token = context.read<AuthProvider>().token;

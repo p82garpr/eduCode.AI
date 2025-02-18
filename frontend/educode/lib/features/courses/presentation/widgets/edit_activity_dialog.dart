@@ -75,6 +75,7 @@ class _EditActivityDialogState extends State<EditActivityDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // ignore: unused_local_variable
     final theme = Theme.of(context);
 
     return AlertDialog(

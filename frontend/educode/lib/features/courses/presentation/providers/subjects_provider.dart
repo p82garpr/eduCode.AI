@@ -9,6 +9,7 @@ class SubjectsProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   Subject? _currentSubject;
+  // ignore: unused_field
   List<Subject> _availableSubjects = [];
   
   SubjectsProvider(this._subjectsService);
