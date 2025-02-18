@@ -1,5 +1,6 @@
 import os
 import re
+import tempfile
 from fastapi import APIRouter, Depends, HTTPException, Path, requests, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -22,6 +23,10 @@ from pydantic import BaseModel
 from google import genai
 import io
 import csv
+from gradio_client import Client, handle_file
+import base64
+from PIL import Image
+from io import BytesIO
 
 router = APIRouter()
 
@@ -449,6 +454,7 @@ async def obtener_imagen_entrega(
         media_type=content_type
     )
 
+
 @router.get("/ocr/{entrega_id}")
 async def obtener_ocr_entrega(
     entrega_id: int,
@@ -535,7 +541,6 @@ async def evaluar_entrega(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes permiso para evaluar entregas"
         )
-    
     
      #obtener la entrega
     query = select(Entrega).where(Entrega.id == entrega_id and Entrega.alumno_id == current_user.id)
@@ -705,6 +710,61 @@ async def obtener_entrega(
     
     return entrega
     
+# Función para convertir la imagen a base64
+def image_to_base64(image_file: UploadFile):
+    image = Image.open(image_file.file)
+    buffered = BytesIO()
+    image.save(buffered, format="JPEG")
+    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+    return img_str
+
+# Endpoint para procesar la imagen con OCR usando Gradio
+@router.post("/ocr/process-uco", response_model=str)
+async def process_image_ocr_uco(
+    image: UploadFile = File(...),
+    current_user: Usuario = Depends(get_current_user)
+):
+    # Comprobar que el usuario está logueado
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para procesar imágenes OCR"
+        )
+        
+        
+    files = {"image": (image.filename, image.file, image.content_type)}
+    response = requests.post("http://192.168.117.196:8000/predict/", files=files)
+    
+    # devolver el string de la respuesta que está dentro de prediction en el json
+    if response.status_code == 200:
+        return response.json()["prediction"]
+    else:
+        raise HTTPException(status_code=500, detail=f"Error al procesar la imagen: {response.text}")
+    
+        """
+        import requests
+
+            # URL de la API
+            API_URL = "http://192.168.117.196:8000/predict/"
+
+            # Ruta de la imagen que quieres probar
+            IMAGE_PATH = "folio.jpg"
+
+            # Abrimos la imagen y la enviamos como multipart/form-data
+            with open(IMAGE_PATH, "rb") as image_file:
+                files = {"image": image_file}
+                response = requests.post(API_URL, files=files)
+
+            # Mostramos la respuesta
+            if response.status_code == 200:
+                print("✅ Respuesta de la API:", response.json())
+            else:
+                print("❌ Error:", response.status_code, response.text)
+        """
+        
+    
+   
+
 @router.post("/ocr/process", response_model=str)
 async def process_image_ocr(
     image: UploadFile = File(...),  

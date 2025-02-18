@@ -251,7 +251,10 @@ class SubmissionService {
       // Crear el request multipart
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse('$_baseUrl/entregas/ocr/process'),
+        //Uri.parse('$_baseUrl/entregas/ocr/process'),
+        Uri.parse('$_baseUrl/entregas/ocr/process-uco'),
+        
+        
       );
 
       // Añadir el token de autorización
