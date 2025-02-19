@@ -109,26 +109,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 const SizedBox(height: 24),
                 AuthButton(
                   text: 'Registrarse',
-                  onPressed: () async {
-                    if (_formKey.currentState?.validate() ?? false) {
-                      final success = await context.read<AuthProvider>().register(
-                            _emailController.text,
-                            _passwordController.text,
-                            _nameController.text,
-                            _lastNameController.text,
-                          );
-                          if (success && mounted) {
-                                Navigator.pushReplacement(
-                                  // ignore: use_build_context_synchronously
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const HomePage(),
-                                    maintainState: false,
-                                  ),
-                                );
-                      } 
-                    }
-                  },  
+                  onPressed: _handleRegister,  
                 ),  
                 const SizedBox(height: 16),
                 TextButton(
@@ -147,6 +128,49 @@ class _RegisterPageState extends State<RegisterPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _handleRegister() async {
+    if (_formKey.currentState?.validate() ?? false) {
+      try {
+        final success = await context.read<AuthProvider>().register(
+              _emailController.text,
+              _passwordController.text,
+              _nameController.text,
+              _lastNameController.text,
+            );
+
+        if (!mounted) return;
+
+        if (success) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const HomePage(),
+              maintainState: false,
+            ),
+          );
+        } else {
+          // Mostrar el error del provider
+          final error = context.read<AuthProvider>().error;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(error ?? 'Error en el registro'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } catch (e) {
+        if (!mounted) return;
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override

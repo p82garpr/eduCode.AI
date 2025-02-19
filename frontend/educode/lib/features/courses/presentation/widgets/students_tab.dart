@@ -19,11 +19,11 @@ class StudentsTab extends StatefulWidget {
   final bool showAsStudent;
 
   const StudentsTab({
-    Key? key,
+    super.key,
     required this.subjectId,
     required this.activities,
     required this.showAsStudent,
-  }) : super(key: key);
+  });
 
   @override
   State<StudentsTab> createState() => _StudentsTabState();
@@ -208,10 +208,22 @@ class _StudentsTabState extends State<StudentsTab> {
                 },
                 trailing: widget.showAsStudent
                     ? null
-                    : IconButton(
-                        icon: const Icon(Icons.remove_circle_outline),
-                        color: Colors.red,
-                        onPressed: () => _handleRemoveStudent(student),
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.email),
+                            color: Theme.of(context).colorScheme.primary,
+                            onPressed: () => _sendEmail(student.email),
+                            tooltip: 'Enviar correo',
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.remove_circle_outline),
+                            color: Colors.red,
+                            onPressed: () => _handleRemoveStudent(student),
+                            tooltip: 'Expulsar alumno',
+                          ),
+                        ],
                       ),
               );
             },

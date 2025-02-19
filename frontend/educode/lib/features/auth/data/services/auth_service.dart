@@ -79,9 +79,9 @@ class AuthService {
       } else {
         throw Exception(jsonDecode(response.body)['detail'] ?? 'Error en el registro');
       }
-    } catch (e) {
-      //print('Error en registro: $e'); // Para debug
-      throw Exception('Error en el registro: $e');
+    } catch (e) { 
+      final decodedError = utf8.decode(e.toString().codeUnits);
+      throw Exception(': $decodedError');
     }
 
   }

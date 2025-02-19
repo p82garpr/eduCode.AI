@@ -1,19 +1,17 @@
-
 import '../../data/services/auth_service.dart';
 import '../../domain/models/user_model.dart';
 import 'package:flutter/material.dart';
 
 
 class AuthProvider extends ChangeNotifier {
-  final AuthService _authService = AuthService();
-  final BuildContext context;
+  final AuthService _authService;
   
   bool _isLoading = false;
   String? _error;
   UserModel? _currentUser;
   String? _token;
 
-  AuthProvider(this.context);
+  AuthProvider(this._authService);
 
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -72,7 +70,13 @@ class AuthProvider extends ChangeNotifier {
       return true;
     } catch (e) {
       _isLoading = false;
-      _error = e.toString();
+      // Manejar específicamente el error de correo duplicado
+      if (e.toString().contains('400')) {
+        _error = 'El correo ya esta registrado';
+      } else {
+        _error = e.toString().replaceAll('Exception:', '');
+      }
+      
       notifyListeners();
       return false;
     }

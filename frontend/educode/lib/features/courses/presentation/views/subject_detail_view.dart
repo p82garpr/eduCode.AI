@@ -337,15 +337,6 @@ class _SubjectDetailViewState extends State<SubjectDetailView> {
           appBar: AppBar(
             title: Text(widget.subject.nombre),
             actions: [
-              if (isTeacher)
-                IconButton(
-                  icon: Icon(
-                    Icons.delete_forever,
-                    color: colors.error,
-                  ),
-                  onPressed: _deleteSubject,
-                  tooltip: 'Eliminar asignatura',
-                ),
               if (!isTeacher)
                 IconButton(
                   icon: Icon(

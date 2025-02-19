@@ -2,6 +2,7 @@ import 'package:educode/features/auth/presentation/widgets/edit_profile_dialog.d
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:educode/features/auth/presentation/providers/auth_provider.dart';
+import 'package:educode/core/providers/theme_provider.dart';
 
 class ProfileView extends StatelessWidget {
   const ProfileView({super.key});
@@ -9,6 +10,7 @@ class ProfileView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().currentUser;
+    final themeProvider = context.watch<ThemeProvider>();
     final colors = Theme.of(context).colorScheme;
 
     return SingleChildScrollView(
@@ -65,7 +67,6 @@ class ProfileView extends StatelessWidget {
                 ),
           ),
           const SizedBox(height: 32),
-          // Información del usuario
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Card(
@@ -89,6 +90,23 @@ class ProfileView extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 20),
+          // Botón de tema debajo de la Card
+          ListTile(
+            leading: Icon(
+              themeProvider.isDarkMode 
+                ? Icons.light_mode 
+                : Icons.dark_mode,
+              color: colors.primary,
+            ),
+            title: Text(
+              themeProvider.isDarkMode 
+                ? 'Cambiar a modo claro' 
+                : 'Cambiar a modo oscuro',
+              style: TextStyle(color: colors.onSurface),
+            ),
+            onTap: () => themeProvider.toggleTheme(),
+          ),
         ],
       ),
     );
@@ -100,21 +118,23 @@ class ProfileView extends StatelessWidget {
     required String title,
     required String subtitle,
   }) {
+    final colors = Theme.of(context).colorScheme;
+    
     return ListTile(
-      leading: Icon(icon, color: Theme.of(context).colorScheme.primary),
+      leading: Icon(icon, color: colors.primary),
       title: Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 14,
-          color: Colors.grey,
+          color: colors.onSurfaceVariant,
         ),
       ),
       subtitle: Text(
         subtitle,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w500,
-          color: Colors.black87,
+          color: colors.onSurface,
         ),
       ),
     );
