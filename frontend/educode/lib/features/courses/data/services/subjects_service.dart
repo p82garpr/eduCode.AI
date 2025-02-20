@@ -1,12 +1,13 @@
 import 'dart:convert';
 import 'package:educode/features/courses/domain/models/activity_model.dart';
 import 'package:http/http.dart' as http;
+import '../../../../core/config/app_config.dart';
 
 import '../../domain/models/subject_model.dart';
 
 class SubjectsService {
   final http.Client _client;
-  final String _baseUrl = 'http://10.0.2.2:8000/api/v1';
+  final String _baseUrl = AppConfig.apiBaseUrl;
 
   SubjectsService({http.Client? client}) : _client = client ?? http.Client();
 

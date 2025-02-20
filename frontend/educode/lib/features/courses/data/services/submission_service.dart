@@ -2,13 +2,14 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../../../../core/config/app_config.dart';
 
 import '../../domain/models/submission_model.dart';
 import 'package:http_parser/http_parser.dart';
 
 class SubmissionService {
   final http.Client _client;
-  final String _baseUrl = 'http://10.0.2.2:8000/api/v1';
+  final String _baseUrl = AppConfig.apiBaseUrl;
 
   SubmissionService({http.Client? client}) : _client = client ?? http.Client();
 

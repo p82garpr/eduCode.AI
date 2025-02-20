@@ -1,12 +1,13 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../../../../core/config/app_config.dart';
 
 import '../../domain/models/enrolled_student_model.dart';
 import '../../domain/models/user_profile_model.dart';
 
 class EnrollmentService {
   final http.Client _client;
-  final String _baseUrl = 'http://10.0.2.2:8000/api/v1';
+  final String _baseUrl = AppConfig.apiBaseUrl;
 
   EnrollmentService({http.Client? client}) : _client = client ?? http.Client();
 

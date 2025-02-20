@@ -1,23 +1,25 @@
 import '../../data/services/auth_service.dart';
 import '../../domain/models/user_model.dart';
 import 'package:flutter/material.dart';
+import '../../../../core/services/secure_storage_service.dart';
 
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService;
-  
-  bool _isLoading = false;
-  String? _error;
+  final SecureStorageService _secureStorage;
   UserModel? _currentUser;
   String? _token;
+  bool _isLoading = false;
+  String? _error;
 
-  AuthProvider(this._authService);
+  AuthProvider(this._authService, this._secureStorage);
 
+  // Getters
+  UserModel? get currentUser => _currentUser;
+  String? get token => _token;
   bool get isLoading => _isLoading;
   String? get error => _error;
-  UserModel? get currentUser => _currentUser;
   bool get isAuthenticated => _currentUser != null;
-  String? get token => _token;
 
   Future<bool> login(String email, String password) async {
     try {
@@ -25,27 +27,46 @@ class AuthProvider extends ChangeNotifier {
       _error = null;
       notifyListeners();
 
-      // Primero obtenemos el token
       _token = await _authService.login(email, password);
-      
-      // Luego obtenemos la información del usuario
-      if (_token != null) {
-        _currentUser = await _authService.getUserInfo(_token!);
-        _isLoading = false;
-        notifyListeners();
-        return true;
-      }
+      _currentUser = await _authService.getUserInfo(_token!);
 
-      throw Exception('No se pudo obtener el token');
+      // Guardar en almacenamiento seguro
+      await _secureStorage.saveToken(_token!);
+      await _secureStorage.saveUserInfo(
+        id: _currentUser!.id.toString(),
+        type: _currentUser!.tipoUsuario,
+        name: _currentUser!.nombre,
+      );
 
-    } catch (e) {
       _isLoading = false;
-      _error = e.toString();
-      _token = null;
-      _currentUser = null;
       notifyListeners();
-      return false;
+      return true;
+    } catch (e) {
+      _error = e.toString();
+      _isLoading = false;
+      notifyListeners();
+      rethrow;
     }
+  }
+
+  Future<void> logout() async {
+    _currentUser = null;
+    _token = null;
+    await _secureStorage.clearAll();
+    notifyListeners();
+  }
+
+  // Método para verificar si hay una sesión guardada al iniciar la app
+  Future<bool> checkAuthStatus() async {
+    final token = await _secureStorage.getToken();
+    if (token != null) {
+      _token = token;
+      final userInfo = await _secureStorage.getUserInfo();
+      // Aquí podrías hacer una llamada al backend para obtener los datos actualizados del usuario
+      notifyListeners();
+      return true;
+    }
+    return false;
   }
 
   Future<bool> register(String email, String password, String name, String lastName) async {
@@ -80,12 +101,6 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     }
-  }
-
-  void logout() {
-    _currentUser = null;
-    _token = null;
-    notifyListeners();
   }
 
   void clearError() {

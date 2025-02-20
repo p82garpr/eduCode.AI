@@ -1,14 +1,15 @@
 import 'dart:convert';
+import 'package:educode/core/config/app_config.dart';
 import 'package:http/http.dart' as http;
 import '../../domain/models/user_model.dart';
 
 class AuthService {
-  static const String _baseUrl = 'http://10.0.2.2:8000'; // Ajusta según tu API
+
 
   Future<String> login(String email, String password) async {
     try {
       final response = await http.post(
-        Uri.parse('$_baseUrl/api/v1/login'),
+        Uri.parse('${AppConfig.apiBaseUrl}/login'),
 
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -38,7 +39,7 @@ class AuthService {
   Future<UserModel> getUserInfo(String token) async {
     try {
       final response = await http.get(
-        Uri.parse('$_baseUrl/api/v1/me'),
+        Uri.parse('${AppConfig.apiBaseUrl}/me'),
         headers: {
           'Authorization': 'Bearer $token',
         },
@@ -57,7 +58,7 @@ class AuthService {
   Future<UserModel> register(String name, String lastName, String email, String password) async {
     try {
       final response = await http.post(
-        Uri.parse('$_baseUrl/api/v1/registro'),
+        Uri.parse('${AppConfig.apiBaseUrl}/registro'),
         headers: {
           'Content-Type': 'application/json',
         },
@@ -95,7 +96,7 @@ class AuthService {
   }) async {
     try {
       final response = await http.put(
-        Uri.parse('$_baseUrl/api/v1/usuarios/update'),
+        Uri.parse('${AppConfig.apiBaseUrl}/usuarios/update'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',

@@ -1,4 +1,5 @@
 import 'package:educode/core/providers/theme_provider.dart';
+import 'package:educode/core/services/secure_storage_service.dart';
 import 'package:educode/features/courses/data/services/activity_service.dart';
 import 'package:educode/features/courses/data/services/enrollment_service.dart';
 import 'package:educode/features/courses/data/services/submission_service.dart';
@@ -29,11 +30,17 @@ Future<void> initApp() async {
   // Inicializar SharedPreferences
   await SharedPreferences.getInstance();
 
+  // Crear instancia del SecureStorageService
+  final secureStorage = SecureStorageService();
+
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(
-          create: (_) => AuthProvider(AuthService()),
+          create: (_) => AuthProvider(
+            AuthService(),
+            secureStorage,
+          ),
         ),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(
