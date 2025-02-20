@@ -176,7 +176,7 @@ async def eliminar_usuario(
     
     return None
 
-"""
+
 # Endpoint para obtener los detalles del usuario dado un id de usuario
 @router.get("/{usuario_id}", response_model=UsuarioResponse)
 async def obtener_usuario(
@@ -203,7 +203,6 @@ async def obtener_usuario(
         )   
 
     return usuario
-"""
 
 @router.get("/usuarios/{user_id}/profile", response_model=ProfileResponse)
 async def get_user_profile(

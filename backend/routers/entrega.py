@@ -596,7 +596,7 @@ async def evaluar_texto_gemini(
         response = client.models.generate_content(
             model = "gemini-1.5-flash",
             contents = [
-                f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo,pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10, en base al enunciado siguiente: {actividad.descripcion}. La solución es: {solucion}. Al final, quiero que me des la nota de la entrega en formato: Nota: n/10"
+                f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo,pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: {actividad.descripcion}. La solución es: {solucion}. Al final, quiero que me des la nota de la entrega en formato: Nota: n/10. Si no tiene nada que ver con la actividad, escribe que no tiene nada que ver con la actividad y pon de nota 0."
             ]
         )
         
@@ -616,6 +616,56 @@ async def evaluar_texto_gemini(
     except Exception as e:
         print(f"Error detallado: {str(e)}")  # Para debugging
         raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
+    
+#Endpoint para obtener la entrega dado un id de la entrega
+@router.get("/{entrega_id}", response_model=EntregaResponse)
+async def obtener_entrega(
+    entrega_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    # Comprobar que el usuario está logueado
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para obtener entregas"
+        )
+    
+    # Obtener la entrega con todas sus relaciones
+    query = (
+        select(Entrega)
+        .options(
+            selectinload(Entrega.actividad)
+            .selectinload(Actividad.asignatura)
+            .selectinload(Asignatura.profesor),
+            selectinload(Entrega.alumno)
+        )
+        .where(Entrega.id == entrega_id)
+    )
+    result = await db.execute(query)
+    entrega = result.scalar_one_or_none()
+    
+    if not entrega:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entrega no encontrada"
+        )
+    
+    # Verificar permisos
+    if current_user.tipo_usuario == TipoUsuario.ALUMNO and entrega.alumno_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para obtener esta entrega"
+        )
+    elif current_user.tipo_usuario == TipoUsuario.PROFESOR and entrega.actividad.asignatura.profesor_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para obtener esta entrega"
+        )
+    
+    return entrega
+    
+
 
 """
 @router.post("/pruebaGemini", response_model=str)
@@ -628,44 +678,7 @@ async def pruebaGemini(
         contents = [prompt])
     return response.text
 
-# Obtener entregas de un alumno en una asignatura
-@router.get("/alumno/{alumno_id}/asignatura/{asignatura_id}", response_model=List[EntregaResponse])
-async def obtener_entregas_alumno_asignatura(
-    alumno_id: int,
-    asignatura_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user)
-):
-    # Comprobar que el usuario está logueado
-    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para obtener entregas"
-        )
-        
-    # Comprobar que el alumno es quien esta haciendo la petición
-    if current_user.tipo_usuario == TipoUsuario.ALUMNO and alumno_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para obtener las entregas de este alumno"
-        )
-    
-    # Obtener las entregas del alumno en la asignatura
-    query = (
-        select(Entrega)
-        .join(Entrega.actividad)
-        .join(Actividad.asignatura)
-        .where(
-            and_(
-                Entrega.alumno_id == alumno_id,
-                Asignatura.id == asignatura_id
-            )
-        )
-    )
-    result = await db.execute(query)
-    entregas = result.scalars().all()
-    
-    return entregas
+
 
 
 
@@ -879,53 +892,7 @@ async def evaluar_texto_gemini(
         raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
     
 
-#Endpoint para obtener la entrega dado un id de la entrega
-@router.get("/{entrega_id}", response_model=EntregaResponse)
-async def obtener_entrega(
-    entrega_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user)
-):
-    # Comprobar que el usuario está logueado
-    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para obtener entregas"
-        )
-    
-    # Obtener la entrega con todas sus relaciones
-    query = (
-        select(Entrega)
-        .options(
-            selectinload(Entrega.actividad)
-            .selectinload(Actividad.asignatura)
-            .selectinload(Asignatura.profesor),
-            selectinload(Entrega.alumno)
-        )
-        .where(Entrega.id == entrega_id)
-    )
-    result = await db.execute(query)
-    entrega = result.scalar_one_or_none()
-    
-    if not entrega:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Entrega no encontrada"
-        )
-    
-    # Verificar permisos
-    if current_user.tipo_usuario == TipoUsuario.ALUMNO and entrega.alumno_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para obtener esta entrega"
-        )
-    elif current_user.tipo_usuario == TipoUsuario.PROFESOR and entrega.actividad.asignatura.profesor_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para obtener esta entrega"
-        )
-    
-    return entrega
+
 
         
         

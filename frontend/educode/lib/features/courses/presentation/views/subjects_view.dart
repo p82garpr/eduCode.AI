@@ -25,7 +25,7 @@ class CoursesView extends StatelessWidget {
     
     try {
       // Obtener los datos primero
-      final subjectDetail = await subjectsProvider.getCourseDetail(course.id, token);
+      final subjectDetail = await subjectsProvider.getSubjectDetail(course.id, token);
       final activities = await subjectsProvider.getCourseActivities(course.id, token);
 
 

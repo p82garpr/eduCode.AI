@@ -73,11 +73,11 @@ class SubjectsProvider extends ChangeNotifier {
     }
   }
 
-  Future<Subject> getCourseDetail(int courseId, String token) async {
+  Future<Subject> getSubjectDetail(int subjectId, String token) async {
     try {
-      return await _subjectsService.getCourseDetail(courseId, token);
+      return await _subjectsService.getSubjectDetail(subjectId, token);
     } catch (e) {
-      throw Exception('Error al cargar los detalles del curso: ${e.toString()}');
+      throw Exception('Error al cargar los detalles de la asignatura: ${e.toString()}');
     }
   }
 
@@ -117,4 +117,5 @@ class SubjectsProvider extends ChangeNotifier {
       throw Exception('Error al eliminar la asignatura: $e');
     }
   }
+  
 }

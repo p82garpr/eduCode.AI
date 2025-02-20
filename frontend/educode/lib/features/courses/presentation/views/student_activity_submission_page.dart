@@ -9,6 +9,8 @@ import 'package:educode/features/courses/domain/models/activity_model.dart';
 import 'package:educode/features/courses/presentation/providers/subjects_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'dart:async' show unawaited;
+
 
 class StudentActivitySubmissionPage extends StatefulWidget {
   const StudentActivitySubmissionPage({super.key});
@@ -27,6 +29,7 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
   File? _imageFile;
   bool _processingImage = false;
   bool _isTextExpanded = true;
+  bool _isProcessingOcr = false;
 
   @override
   void initState() {
@@ -120,15 +123,6 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
   }
 
   Future<void> _submitSolution() async {
-    // Verificar el formKey
-    if (_formKey.currentState == null) {
-      debugPrint('Error: formKey.currentState es null');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error: Formulario no inicializado correctamente')),
-      );
-      return;
-    }
-
     if (!_formKey.currentState!.validate()) {
       debugPrint('Error: Validación del formulario fallida');
       return;
@@ -158,17 +152,10 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
       final authProvider = context.read<AuthProvider>();
       final token = authProvider.token;
       
-      debugPrint('ID Actividad: ${_activity!.id}');
-      debugPrint('Texto solución: ${_solutionController.text}');
-      debugPrint('Token presente: ${token != null}');
-      debugPrint('Imagen presente: ${_imageFile != null}');
-
       if (token == null) {
         throw Exception('No se ha encontrado el token de autenticación');
       }
 
-      
-      
       // Enviar la entrega
       final entrega = await context.read<SubmissionProvider>().submitActivity(
         _activity!.id,
@@ -177,29 +164,37 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
         image: _imageFile,
       );
 
-      // Evaluar la entrega con Gemini
-      try {
-        await context.read<SubmissionProvider>().evaluateSubmissionWithGemini(entrega.id, token);
-        debugPrint('Entrega evaluada correctamente con Gemini');
-      } catch (e) {
-        debugPrint('Error al evaluar con Gemini: $e');
-        // No lanzamos el error aquí para no interrumpir el flujo principal
-      }
+      if (!mounted) return;
 
-      // ignore: use_build_context_synchronously
+      // Mostrar mensaje de éxito y volver atrás
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Solución enviada y evaluada correctamente')),
+        const SnackBar(content: Text('Solución enviada correctamente')),
       );
-      // ignore: use_build_context_synchronously
       Navigator.pop(context);
+
+      // Evaluar la entrega en segundo plano
+      unawaited(
+        context.read<SubmissionProvider>().evaluateSubmissionWithGemini(entrega.id, token).then((_) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Entrega evaluada correctamente')),
+          );
+        }).catchError((e) {
+          debugPrint('Error al evaluar con Gemini: $e');
+          // No mostramos el error al usuario ya que es un proceso en segundo plano
+        }),
+      );
+
     } catch (e) {
       debugPrint('Error detallado en submitSolution: $e');
-      // ignore: use_build_context_synchronously
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al enviar la solución: $e')),
       );
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -213,7 +208,7 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
       if (image != null) {
         setState(() {
           _imageFile = File(image.path);
-          _processingImage = true;
+          _isProcessingOcr = true;
         });
 
         // Procesar la imagen con OCR
@@ -223,17 +218,20 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
         final token = context.read<AuthProvider>().token;
         final text = await context.read<SubmissionProvider>().processImageOCR(_imageFile!, token ?? '');
 
-        setState(() {
-          _solutionController.text = text;
-          _processingImage = false;
-        });
+        if (mounted) {
+          setState(() {
+            _solutionController.text = text;
+            _isProcessingOcr = false;
+          });
+        }
       }
     } catch (e) {
-      setState(() => _processingImage = false);
-      // ignore: use_build_context_synchronously
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al procesar la imagen: $e')),
-      );
+      if (mounted) {
+        setState(() => _isProcessingOcr = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al procesar la imagen: $e')),
+        );
+      }
     }
   }
 
@@ -267,6 +265,35 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
     );
   }
 
+  Future<void> _processOCR() async {
+    if (_imageFile == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No hay imagen para procesar')),
+      );
+      return;
+    }
+
+    setState(() => _isProcessingOcr = true);
+    
+    try {
+      final token = context.read<AuthProvider>().token;
+      final text = await context.read<SubmissionProvider>().processImageOCR(_imageFile!, token ?? '');
+      
+      setState(() {
+        _solutionController.text = text;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al procesar la imagen: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessingOcr = false);
+      }
+    }
+  }
 
   bool _isSubmissionAllowed() {
     if (_activity == null) return false;
@@ -516,6 +543,25 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
                                     ),
                                   ),
                                   const SizedBox(height: 16),
+                                  ElevatedButton.icon(
+                                    onPressed: _isProcessingOcr ? null : _processOCR,
+                                    icon: const Icon(Icons.refresh),
+                                    label: Text(_isProcessingOcr 
+                                      ? 'Procesando imagen...' 
+                                      : 'Re-procesar OCR'),
+                                    style: ElevatedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 24,
+                                        vertical: 12,
+                                      ),
+                                      backgroundColor: theme.colorScheme.secondary,
+                                      foregroundColor: theme.colorScheme.onSecondary,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
                                 ],
                                 ElevatedButton.icon(
                                   onPressed: !_isSubmissionAllowed()
@@ -680,8 +726,8 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton(
-                              onPressed: !_isSubmissionAllowed()
-                                  ? null  // Deshabilitar si la fecha ha pasado
+                              onPressed: (!_isSubmissionAllowed() || _isProcessingOcr)
+                                  ? null
                                   : _submitSolution,
                               style: ElevatedButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -696,7 +742,9 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
                               child: Text(
                                 !_isSubmissionAllowed()
                                     ? 'Fecha límite superada'
-                                    : 'Enviar Solución',
+                                    : (_isProcessingOcr 
+                                        ? 'Procesando OCR...' 
+                                        : 'Enviar Solución'),
                                 style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,

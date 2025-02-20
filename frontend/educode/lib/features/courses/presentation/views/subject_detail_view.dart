@@ -535,6 +535,53 @@ class _SubjectInfoTab extends StatelessWidget {
     );
   }
 
+  Future<void> _editSubject(BuildContext context) async {
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) => EditSubjectDialog(
+        subject: subject,
+      ),
+    );
+
+    if (result != null && context.mounted) {
+      try {
+        final token = context.read<AuthProvider>().token;
+        if (token == null) {
+          throw Exception('No se encontró el token de autenticación');
+        }
+
+        await context.read<SubjectsProvider>().updateSubject(
+          subject.id,
+          result,
+          token,
+        );
+        
+        if (context.mounted) {
+          // Recargar la lista de asignaturas
+          await context.read<SubjectsProvider>().loadSubjects(subject.profesor.id.toString(), 'Profesor', token);
+          // Recargar la asignatura actual
+          await context.read<SubjectsProvider>().getSubjectDetail(subject.id, token);
+        
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Asignatura actualizada correctamente'),
+            ),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error al actualizar la asignatura: $e'),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -585,20 +632,7 @@ class _SubjectInfoTab extends StatelessWidget {
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (context) => Dialog(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(
-                        maxWidth: 500,
-                        maxHeight: 600,
-                      ),
-                      child: EditSubjectDialog(
-                        subject: subject,
-                      ),
-                    ),
-                  ),
-                );
+                _editSubject(context);
               },
               icon: const Icon(Icons.edit),
               label: const Text('Editar Asignatura'),

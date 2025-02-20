@@ -77,10 +77,10 @@ class SubjectsService {
     }
   }
 
-  Future<Subject> getCourseDetail(int courseId, String token) async {
+  Future<Subject> getSubjectDetail(int subjectId, String token) async {
     try {
       final response = await _client.get(
-        Uri.parse('$_baseUrl/asignaturas/$courseId'),
+        Uri.parse('$_baseUrl/asignaturas/$subjectId'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
