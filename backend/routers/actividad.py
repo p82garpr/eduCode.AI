@@ -21,6 +21,25 @@ async def crear_actividad(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Crea una nueva actividad en una asignatura.
+    Solo el profesor de la asignatura puede crear actividades.
+
+    Parameters:
+    - actividad (ActividadCreate): Datos de la actividad
+        - titulo: Título de la actividad
+        - descripcion: Descripción de la actividad
+        - fecha_entrega: Fecha límite de entrega
+        - asignatura_id: ID de la asignatura
+        - solucion: Solución de la actividad (opcional)
+
+    Returns:
+    - ActividadResponse: Datos de la actividad creada
+
+    Raises:
+    - HTTPException(403): Si el usuario no es profesor
+    - HTTPException(404): Si la asignatura no existe
+    """
     # Verificar que el usuario es profesor
     if current_user.tipo_usuario != TipoUsuario.PROFESOR:
         raise HTTPException(
@@ -59,12 +78,27 @@ async def crear_actividad(
     
     return db_actividad
 
+
 @router.get("/asignatura/{asignatura_id}", response_model=List[ActividadResponse])
 async def obtener_actividades_asignatura(
     asignatura_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Obtiene todas las actividades de una asignatura.
+    Accesible para el profesor de la asignatura y alumnos inscritos.
+
+    Parameters:
+    - asignatura_id (int): ID de la asignatura
+
+    Returns:
+    - List[ActividadResponse]: Lista de actividades de la asignatura
+
+    Raises:
+    - HTTPException(404): Si la asignatura no existe
+    - HTTPException(403): Si el usuario no tiene acceso a la asignatura
+    """
     # Verificar que la asignatura existe
     query = (
         select(Asignatura)
@@ -116,7 +150,7 @@ async def obtener_actividades_asignatura(
     actividades = result.scalars().all()
     
     return actividades
-
+"""
 @router.get("/pendientes", response_model=List[ActividadResponse])
 async def obtener_actividades_pendientes(
     db: AsyncSession = Depends(get_db),
@@ -147,13 +181,27 @@ async def obtener_actividades_pendientes(
     actividades = result.scalars().all()
     
     return actividades
-
+"""
 @router.delete("/{actividad_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def eliminar_actividad(
     actividad_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Elimina una actividad.
+    Solo el profesor de la asignatura puede eliminar actividades.
+
+    Parameters:
+    - actividad_id (int): ID de la actividad a eliminar
+
+    Returns:
+    - None
+
+    Raises:
+    - HTTPException(404): Si la actividad no existe
+    - HTTPException(403): Si el usuario no es el profesor de la asignatura
+    """
     # Verificar que el usuario es profesor
     if current_user.tipo_usuario != TipoUsuario.PROFESOR:
         raise HTTPException(
@@ -197,6 +245,25 @@ async def actualizar_actividad(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Actualiza los datos de una actividad.
+    Solo el profesor de la asignatura puede actualizar actividades.
+
+    Parameters:
+    - actividad_id (int): ID de la actividad
+    - actividad_actualizada (ActividadUpdate): Nuevos datos de la actividad
+        - titulo: Nuevo título (opcional)
+        - descripcion: Nueva descripción (opcional)
+        - fecha_entrega: Nueva fecha de entrega (opcional)
+        - solucion: Nueva solución (opcional)
+
+    Returns:
+    - ActividadResponse: Datos actualizados de la actividad
+
+    Raises:
+    - HTTPException(404): Si la actividad no existe
+    - HTTPException(403): Si el usuario no es el profesor de la asignatura
+    """
     # Verificar que el usuario es profesor
     if current_user.tipo_usuario != TipoUsuario.PROFESOR:
         raise HTTPException(
@@ -245,6 +312,20 @@ async def obtener_actividad(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Obtiene los detalles de una actividad específica.
+    Accesible para el profesor de la asignatura y alumnos inscritos.
+
+    Parameters:
+    - actividad_id (int): ID de la actividad
+
+    Returns:
+    - ActividadResponse: Detalles de la actividad
+
+    Raises:
+    - HTTPException(404): Si la actividad no existe
+    - HTTPException(403): Si el usuario no tiene acceso a la actividad
+    """
     # Verificar que el usuario está logueado
     if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
         raise HTTPException(

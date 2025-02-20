@@ -27,6 +27,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import '../providers/profile_provider.dart';
+import 'package:educode/features/courses/presentation/widgets/edit_subject_dialog.dart';
   
 class SubjectDetailView extends StatefulWidget {
   final Subject subject;
@@ -544,36 +545,6 @@ class _SubjectInfoTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (isTeacher) ...[
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: ElevatedButton.icon(
-                onPressed: () => _downloadSubjectCsv(context),
-                icon: const Icon(Icons.file_download),
-                label: const Text('Exportar Calificaciones'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: colors.primary,
-                  foregroundColor: colors.onPrimary,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                  minimumSize: const Size(double.infinity, 50),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: ElevatedButton.icon(
-                onPressed: () => _deleteSubject(context),
-                icon: const Icon(Icons.delete_forever),
-                label: const Text('Eliminar Asignatura'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: colors.error,
-                  foregroundColor: colors.onError,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                  minimumSize: const Size(double.infinity, 50),
-                ),
-              ),
-            ),
-          ],
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -610,6 +581,59 @@ class _SubjectInfoTab extends StatelessWidget {
               ),
             ),
           ),
+          if (isTeacher) ...[
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => Dialog(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: 500,
+                        maxHeight: 600,
+                      ),
+                      child: EditSubjectDialog(
+                        subject: subject,
+                      ),
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.edit),
+              label: const Text('Editar Asignatura'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: colors.primary,
+                foregroundColor: colors.onPrimary,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                minimumSize: const Size(double.infinity, 50),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton.icon(
+              onPressed: () => _downloadSubjectCsv(context),
+              icon: const Icon(Icons.file_download),
+              label: const Text('Exportar Calificaciones'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: colors.primary,
+                foregroundColor: colors.onPrimary,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                minimumSize: const Size(double.infinity, 50),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton.icon(
+              onPressed: () => _deleteSubject(context),
+              icon: const Icon(Icons.delete_forever),
+              label: const Text('Eliminar Asignatura'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: colors.error,
+                foregroundColor: colors.onError,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                minimumSize: const Size(double.infinity, 50),
+              ),
+            ),
+          ],
         ],
       ),
     );

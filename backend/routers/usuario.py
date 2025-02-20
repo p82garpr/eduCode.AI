@@ -37,6 +37,23 @@ class UpdateUserRequest(BaseModel):
 
 @router.post("/registro", response_model=UsuarioResponse)
 async def registro_usuario(usuario: UsuarioCreate, db: Session = Depends(get_db)):
+    """
+    Registra un nuevo usuario en el sistema.
+
+    Parameters:
+    - usuario (UsuarioCreate): Datos del usuario a registrar
+        - email: Email del usuario
+        - password: Contraseña del usuario
+        - nombre: Nombre del usuario
+        - apellidos: Apellidos del usuario
+        - tipo_usuario: Tipo de usuario (PROFESOR o ALUMNO)
+
+    Returns:
+    - UsuarioResponse: Datos del usuario creado
+
+    Raises:
+    - HTTPException(400): Si el email ya está registrado
+    """
     # Verificar si el email ya existe
     query = select(Usuario).where(Usuario.email == usuario.email)
     result = await db.execute(query)
@@ -68,6 +85,15 @@ async def obtener_profesores(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Obtiene la lista de todos los profesores registrados.
+
+    Returns:
+    - List[UsuarioResponse]: Lista de profesores
+
+    Raises:
+    - HTTPException(401): Si el usuario no está autenticado
+    """
     query = select(Usuario).where(Usuario.tipo_usuario == TipoUsuario.PROFESOR)
     result = await db.execute(query)
     profesores = result.scalars().all()
@@ -78,6 +104,17 @@ async def obtener_alumnos(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Obtiene la lista de todos los alumnos registrados.
+    Solo accesible para profesores.
+
+    Returns:
+    - List[UsuarioResponse]: Lista de alumnos
+
+    Raises:
+    - HTTPException(403): Si el usuario no es profesor
+    - HTTPException(401): Si el usuario no está autenticado
+    """
     # Verificar si el usuario actual es profesor
     if current_user.tipo_usuario != TipoUsuario.PROFESOR:
         raise HTTPException(
@@ -92,6 +129,15 @@ async def obtener_alumnos(
 
 @router.get("/me", response_model=UsuarioResponse)
 async def read_users_me(current_user: Usuario = Depends(get_current_user)):
+    """
+    Obtiene los datos del usuario autenticado actual.
+
+    Returns:
+    - UsuarioResponse: Datos del usuario actual
+
+    Raises:
+    - HTTPException(401): Si el usuario no está autenticado
+    """
     return current_user
 
 @router.delete("/{usuario_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -100,6 +146,19 @@ async def eliminar_usuario(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Elimina un usuario del sistema.
+
+    Parameters:
+    - usuario_id (int): ID del usuario a eliminar
+
+    Returns:
+    - None
+
+    Raises:
+    - HTTPException(404): Si el usuario no existe
+    - HTTPException(401): Si el usuario no está autenticado
+    """
     # Obtener el usuario
     query = select(Usuario).where(Usuario.id == usuario_id)
     result = await db.execute(query)
@@ -117,7 +176,7 @@ async def eliminar_usuario(
     
     return None
 
-
+"""
 # Endpoint para obtener los detalles del usuario dado un id de usuario
 @router.get("/{usuario_id}", response_model=UsuarioResponse)
 async def obtener_usuario(
@@ -144,6 +203,7 @@ async def obtener_usuario(
         )   
 
     return usuario
+"""
 
 @router.get("/usuarios/{user_id}/profile", response_model=ProfileResponse)
 async def get_user_profile(
@@ -151,6 +211,23 @@ async def get_user_profile(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Obtiene el perfil completo de un usuario, incluyendo sus asignaturas.
+
+    Parameters:
+    - user_id (int): ID del usuario
+
+    Returns:
+    - ProfileResponse: Perfil completo del usuario incluyendo:
+        - Datos básicos del usuario
+        - Asignaturas impartidas (si es profesor)
+        - Asignaturas inscritas (si es alumno)
+
+    Raises:
+    - HTTPException(404): Si el usuario no existe
+    - HTTPException(403): Si no tiene permisos para ver el perfil
+    - HTTPException(401): Si el usuario no está autenticado
+    """
     # Comprobar que el usuario está logueado
     if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
         raise HTTPException(
@@ -238,6 +315,23 @@ async def update_user(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Actualiza los datos del usuario actual.
+
+    Parameters:
+    - user_data (UpdateUserRequest): Nuevos datos del usuario
+        - nombre: Nuevo nombre
+        - apellidos: Nuevos apellidos
+        - email: Nuevo email
+        - password: Nueva contraseña (opcional)
+
+    Returns:
+    - UsuarioResponse: Datos actualizados del usuario
+
+    Raises:
+    - HTTPException(400): Si el email ya está en uso por otro usuario
+    - HTTPException(401): Si el usuario no está autenticado
+    """
     try:
         # Verificar si el email ya existe para otro usuario
         query = select(Usuario).where(

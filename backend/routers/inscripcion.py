@@ -22,6 +22,23 @@ async def crear_inscripcion(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Crea una nueva inscripción de un alumno en una asignatura.
+
+    Parameters:
+    - inscripcion (InscripcionCreate): Datos de la inscripción
+        - asignatura_id: ID de la asignatura
+        - codigo_acceso: Código de acceso a la asignatura
+
+    Returns:
+    - InscripcionResponse: Datos de la inscripción creada
+
+    Raises:
+    - HTTPException(403): Si el usuario no es alumno
+    - HTTPException(404): Si la asignatura no existe
+    - HTTPException(401): Si el código de acceso es incorrecto
+    - HTTPException(400): Si el alumno ya está inscrito
+    """
     # Verificar que el usuario es alumno
     if current_user.tipo_usuario != TipoUsuario.ALUMNO:
         raise HTTPException(
@@ -92,6 +109,15 @@ async def obtener_mis_inscripciones(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Obtiene todas las asignaturas en las que está inscrito el alumno actual.
+
+    Returns:
+    - List[AsignaturaResponse]: Lista de asignaturas en las que está inscrito el alumno
+
+    Raises:
+    - HTTPException(403): Si el usuario no es alumno
+    """
     # Verificar que el usuario es alumno
     if current_user.tipo_usuario != TipoUsuario.ALUMNO:
         raise HTTPException(
@@ -118,6 +144,15 @@ async def obtener_mis_inscripciones_impartidas(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Obtiene todas las asignaturas que imparte el profesor actual.
+
+    Returns:
+    - List[AsignaturaResponse]: Lista de asignaturas que imparte el profesor
+
+    Raises:
+    - HTTPException(500): Si hay un error al obtener las asignaturas
+    """
     try:
         # Limpiar la caché de consultas preparadas
         await db.execute(text("DEALLOCATE ALL"))
@@ -144,6 +179,20 @@ async def eliminar_inscripcion(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Elimina la inscripción de un alumno en una asignatura.
+
+    Parameters:
+    - asignatura_id (int): ID de la asignatura
+    - alumno_id (int): ID del alumno
+
+    Returns:
+    - dict: Mensaje de confirmación
+
+    Raises:
+    - HTTPException(403): Si el usuario no tiene permisos
+    - HTTPException(404): Si la inscripción no existe
+    """
     # Verificar que el usuario es profesor o alumno
     if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
         raise HTTPException(

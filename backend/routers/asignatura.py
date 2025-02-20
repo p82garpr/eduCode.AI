@@ -28,6 +28,22 @@ async def crear_asignatura(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Crea una nueva asignatura.
+    Solo los profesores pueden crear asignaturas.
+
+    Parameters:
+    - asignatura (AsignaturaCreate): Datos de la asignatura
+        - nombre: Nombre de la asignatura
+        - descripcion: Descripción de la asignatura
+        - codigo_acceso: Código de acceso para inscripción
+
+    Returns:
+    - AsignaturaResponse: Datos de la asignatura creada
+
+    Raises:
+    - HTTPException(403): Si el usuario no es profesor
+    """
     # Verificar que el usuario es profesor
     if current_user.tipo_usuario != TipoUsuario.PROFESOR:
         raise HTTPException(
@@ -66,6 +82,17 @@ async def obtener_asignaturas(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Obtiene la lista de asignaturas.
+    Para profesores: muestra solo sus asignaturas.
+    Para alumnos: muestra todas las asignaturas disponibles.
+
+    Returns:
+    - List[AsignaturaResponse]: Lista de asignaturas
+
+    Raises:
+    - HTTPException(401): Si el usuario no está autenticado
+    """
     # Si es profesor, mostrar solo sus asignaturas
     if current_user.tipo_usuario == TipoUsuario.PROFESOR:
         query = (
@@ -87,6 +114,19 @@ async def obtener_asignatura(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Obtiene los detalles de una asignatura específica.
+
+    Parameters:
+    - asignatura_id (int): ID de la asignatura
+
+    Returns:
+    - AsignaturaResponse: Detalles de la asignatura
+
+    Raises:
+    - HTTPException(404): Si la asignatura no existe
+    - HTTPException(401): Si el usuario no está autenticado
+    """
     # Modificar la consulta para incluir la carga de la relación profesor
     query = (
         select(Asignatura)
@@ -110,6 +150,24 @@ async def actualizar_asignatura(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Actualiza los datos de una asignatura.
+    Solo el profesor propietario puede actualizar la asignatura.
+
+    Parameters:
+    - asignatura_id (int): ID de la asignatura
+    - asignatura_update (AsignaturaCreate): Nuevos datos de la asignatura
+        - nombre: Nuevo nombre
+        - descripcion: Nueva descripción
+        - codigo_acceso: Nuevo código de acceso (opcional)
+
+    Returns:
+    - AsignaturaResponse: Datos actualizados de la asignatura
+
+    Raises:
+    - HTTPException(404): Si la asignatura no existe
+    - HTTPException(403): Si el usuario no es el profesor de la asignatura
+    """
     # Verificar que el usuario es profesor
     if current_user.tipo_usuario != TipoUsuario.PROFESOR:
         raise HTTPException(
@@ -151,6 +209,20 @@ async def eliminar_asignatura(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Elimina una asignatura.
+    Solo el profesor propietario puede eliminar la asignatura.
+
+    Parameters:
+    - asignatura_id (int): ID de la asignatura a eliminar
+
+    Returns:
+    - dict: Mensaje de confirmación
+
+    Raises:
+    - HTTPException(404): Si la asignatura no existe
+    - HTTPException(403): Si el usuario no es el profesor de la asignatura
+    """
     # Verificar que el usuario es profesor
     if current_user.tipo_usuario != TipoUsuario.PROFESOR:
         raise HTTPException(
@@ -189,6 +261,20 @@ async def obtener_alumnos_asignatura(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Obtiene la lista de alumnos inscritos en una asignatura.
+    Accesible para el profesor de la asignatura y alumnos inscritos.
+
+    Parameters:
+    - asignatura_id (int): ID de la asignatura
+
+    Returns:
+    - List[UsuarioResponse]: Lista de alumnos inscritos
+
+    Raises:
+    - HTTPException(404): Si la asignatura no existe
+    - HTTPException(403): Si el usuario no tiene permisos para ver la lista
+    """
     # Verificar que el usuario es profesor o alumno
     if current_user.tipo_usuario not in [TipoUsuario.PROFESOR, TipoUsuario.ALUMNO]:
         raise HTTPException(
@@ -241,6 +327,21 @@ async def export_subject_csv(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Exporta las calificaciones de una asignatura en formato CSV.
+    Solo accesible para el profesor de la asignatura.
+
+    Parameters:
+    - asignatura_id (int): ID de la asignatura
+
+    Returns:
+    - Response: Archivo CSV con las calificaciones
+        Incluye: nombre alumno, apellidos, email, actividades y notas
+
+    Raises:
+    - HTTPException(404): Si la asignatura no existe
+    - HTTPException(403): Si el usuario no es el profesor de la asignatura
+    """
     # Verificar que el usuario es profesor
     if current_user.tipo_usuario != TipoUsuario.PROFESOR:
         raise HTTPException(

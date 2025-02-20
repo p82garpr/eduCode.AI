@@ -1,6 +1,3 @@
-import os
-import re
-import tempfile
 from fastapi import APIRouter, Depends, HTTPException, Path, requests, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -20,109 +17,19 @@ import imghdr  # Para verificar el tipo de imagen
 import asyncio
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
-from google import genai
 import io
 import csv
-from gradio_client import Client, handle_file
-import base64
-from PIL import Image
-from io import BytesIO
+from google import genai
+import os
 
 router = APIRouter()
+
 
 # Crear un modelo para la entrega
 class EntregaCreate(BaseModel):
     textoOcr: str
 
-@router.post("/", response_model=EntregaResponse)
-async def crear_entrega(
-    entrega: EntregaCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user)
-):
-    # Verificar que el usuario es alumno
-    if current_user.tipo_usuario != TipoUsuario.ALUMNO:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo los alumnos pueden crear entregas"
-        )
-    
-    # Verificar que la actividad existe y cargar todas las relaciones necesarias
-    query = (
-        select(Actividad)
-        .join(Actividad.asignatura)
-        .options(
-            selectinload(Actividad.asignatura).selectinload(Asignatura.profesor)
-        )
-        .where(Actividad.id == entrega.actividad_id)
-    )
-    result = await db.execute(query)
-    actividad = result.scalar_one_or_none()
-    
-    if not actividad:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Actividad no encontrada"
-        )
-    
-    # Verificar que el alumno está inscrito en la asignatura
-    query = (
-        select(Asignatura)
-        .join(Asignatura.inscripciones)
-        .where(
-            Asignatura.id == actividad.asignatura_id,
-            Inscripcion.alumno_id == current_user.id
-        )
-    )
-    result = await db.execute(query)
-    if not result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No estás inscrito en esta asignatura"
-        )
-    
-    # Verificar que no ha pasado la fecha de entrega
-    if datetime.now() > actividad.fecha_entrega:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La fecha de entrega ya ha pasado"
-        )
-    
-    # Verificar si ya existe una entrega
-    query = select(Entrega).where(
-        Entrega.actividad_id == entrega.actividad_id,
-        Entrega.alumno_id == current_user.id
-    )
-    result = await db.execute(query)
-    if result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ya has realizado una entrega para esta actividad"
-        )
-    
-    # Crear entrega
-    db_entrega = Entrega(
-        archivo_entrega=entrega.archivo_entrega,
-        actividad_id=entrega.actividad_id,
-        alumno_id=current_user.id
-    )
-    db.add(db_entrega)
-    await db.commit()
-    await db.refresh(db_entrega)
-    
-    # Cargar todas las relaciones necesarias
-    query = (
-        select(Entrega)
-        .where(Entrega.id == db_entrega.id)
-        .options(
-            selectinload(Entrega.actividad).selectinload(Actividad.asignatura).selectinload(Asignatura.profesor),
-            selectinload(Entrega.alumno)
-        )
-    )
-    result = await db.execute(query)
-    db_entrega = result.scalar_one()
-    
-    return db_entrega
+
 
 @router.get("/actividad/{actividad_id}", response_model=List[EntregaResponse])
 async def obtener_entregas_actividad(
@@ -130,6 +37,20 @@ async def obtener_entregas_actividad(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Obtiene todas las entregas de una actividad específica.
+    Los profesores pueden ver todas las entregas, los alumnos solo las suyas.
+
+    Parameters:
+    - actividad_id (int): ID de la actividad
+
+    Returns:
+    - List[EntregaResponse]: Lista de entregas de la actividad
+
+    Raises:
+    - HTTPException(404): Si la actividad no existe
+    - HTTPException(403): Si el usuario no tiene permisos
+    """
     # Verificar que la actividad existe
     query = (
         select(Actividad)
@@ -191,6 +112,23 @@ async def calificar_entrega(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Califica una entrega.
+    Solo el profesor de la asignatura puede calificar entregas.
+
+    Parameters:
+    - entrega_id (int): ID de la entrega
+    - calificacion (EntregaUpdate): Datos de la calificación
+        - calificacion: Nota numérica
+        - comentarios: Comentarios sobre la entrega
+
+    Returns:
+    - EntregaResponse: Datos actualizados de la entrega
+
+    Raises:
+    - HTTPException(403): Si el usuario no es profesor
+    - HTTPException(404): Si la entrega no existe
+    """
     # Verificar que el usuario es profesor
     if current_user.tipo_usuario != TipoUsuario.PROFESOR:
         raise HTTPException(
@@ -231,118 +169,6 @@ async def calificar_entrega(
     
     return entrega 
 
-@router.get("/actividad/{actividad_id}/entregas", response_model=List[EntregaResponse])
-async def obtener_entregas_actividad(
-    actividad_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user)
-):
-    # Verificar que la actividad existe y cargar las entregas
-    query = (
-        select(Actividad)
-        .join(Actividad.asignatura)
-        .options(selectinload(Actividad.asignatura))
-        .where(Actividad.id == actividad_id)
-    )
-    result = await db.execute(query)
-    actividad = result.scalar_one_or_none()
-    
-    if not actividad:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Actividad no encontrada"
-        )
-    
-    # Verificar que el usuario es el profesor de la asignatura
-    if current_user.tipo_usuario != TipoUsuario.PROFESOR or actividad.asignatura.profesor_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para ver las entregas de esta actividad"
-        )
-    
-    # Obtener solo las entregas sin cargar relaciones adicionales
-    query = select(Entrega).where(Entrega.actividad_id == actividad_id)
-    result = await db.execute(query)
-    entregas = result.scalars().all()
-    
-    return entregas
-
-#Endpoint para evaluar entregas
-@router.put("/evaluarLMS/{entrega_id}", response_model=EntregaResponse)
-async def evaluar_entrega(
-    entrega_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user),
-):
-    
-    # comprobar que el usuario esta logueado
-    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para evaluar entregas"
-        )
-    
-    
-    #obtener la entrega
-    query = select(Entrega).where(Entrega.id == entrega_id and Entrega.alumno_id == current_user.id)
-    result = await db.execute(query)
-    entrega = result.scalar_one_or_none()
-    
-    #obtener la actividad
-    query = select(Actividad).where(Actividad.id == entrega.actividad_id)
-    result = await db.execute(query)
-    actividad = result.scalar_one_or_none()
-    
-   
-    
-    if entrega.imagen is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No has subido ningún archivo"
-        )
-
-    #obtener el texto de la imagen
-    texto = await obtener_ocr_entrega(entrega_id, db, current_user)
-    
-    #conectar con la API y mandarle la entrega
-    try:
-
-        # Enviar el texto al LM para evaluación
-        lm_response = requests.post(
-            "http://localhost:1234/v1/chat/completions",  # Ajusta la URL según tu configuración de LMStudio
-            json={
-                "model": "deepseek-coder-v2-lite-instruct",
-                "messages": [
-                { "role": "system", "content": f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo en base al enunciado siguiente: {actividad.descripcion}. También proporciona la nota de la entrega en el formato: Nota: [nota]"},
-                { "role": "user", "content": f"{texto}"}
-                ],
-                "temperature": 0.7,
-                "max_tokens": -1,
-                "stream": "false"
-
-            }
-        )
-        
-        # Verificar si la respuesta fue exitosa
-        lm_response.raise_for_status()  # Lanza una excepción si la respuesta no es exitosa
-
-        entrega.comentarios = lm_response.json()["choices"][0]["message"]["content"]
-        
-        #buscar donde ponga nota:
-        nota = re.search(r'Nota: (\d+)', entrega.comentarios)
-        if nota:
-            entrega.calificacion = int(nota.group(1))
-        else:
-            entrega.calificacion = 0    
-        # Actualizar la entrega en la base de datos
-        await db.commit()
-        await db.refresh(entrega)
-        return entrega
-
-
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en el proceso de evaluación: {str(e)}")
 
 @router.post("/{actividad_id}/entrega", response_model=EntregaResponse)
 async def crear_entrega(
@@ -352,6 +178,23 @@ async def crear_entrega(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Crea una nueva entrega para una actividad.
+    Solo los alumnos pueden crear entregas.
+
+    Parameters:
+    - actividad_id (int): ID de la actividad
+    - textoOcr (str): Texto extraído de la imagen mediante OCR
+    - imagen (UploadFile): Archivo de imagen con la solución
+
+    Returns:
+    - EntregaResponse: Datos de la entrega creada
+
+    Raises:
+    - HTTPException(403): Si el usuario no es alumno
+    - HTTPException(404): Si la actividad no existe
+    - HTTPException(400): Si ya existe una entrega o el formato de imagen no es válido
+    """
     try:
         # Verificar que el usuario es un alumno
         if current_user.tipo_usuario != TipoUsuario.ALUMNO:
@@ -455,13 +298,388 @@ async def obtener_imagen_entrega(
     )
 
 
-@router.get("/ocr/{entrega_id}")
+# Endpoint para procesar la imagen con OCR usando Gradio
+@router.post("/ocr/process-uco", response_model=str)
+async def process_image_ocr_uco(
+    image: UploadFile = File(...),
+    current_user: Usuario = Depends(get_current_user)
+):
+    """
+    Procesa una imagen usando el servicio OCR de la UCO.
+    Envía la imagen al servidor OCR de la UCO y devuelve el texto extraído.
+
+    Parameters:
+    - image (UploadFile): Imagen a procesar (JPEG, PNG, GIF o JPG)
+
+    Returns:
+    - str: Texto extraído de la imagen
+
+    Raises:
+    - HTTPException(403): Si el usuario no es profesor ni alumno
+    - HTTPException(500): Si hay un error al procesar la imagen en el servidor OCR
+    """
+    # Comprobar que el usuario está logueado
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para procesar imágenes OCR"
+        )
+        
+        
+    files = {"image": (image.filename, image.file, image.content_type)}
+    response = requests.post("http://192.168.117.196:8000/predict/", files=files)
+    
+    # devolver el string de la respuesta que está dentro de prediction en el json
+    if response.status_code == 200:
+        return response.json()["prediction"]
+    else:
+        raise HTTPException(status_code=500, detail=f"Error al procesar la imagen: {response.text}")
+    
+        """
+        import requests
+
+            # URL de la API
+            API_URL = "http://192.168.117.196:8000/predict/"
+
+            # Ruta de la imagen que quieres probar
+            IMAGE_PATH = "folio.jpg"
+
+            # Abrimos la imagen y la enviamos como multipart/form-data
+            with open(IMAGE_PATH, "rb") as image_file:
+                files = {"image": image_file}
+                response = requests.post(API_URL, files=files)
+
+            # Mostramos la respuesta
+            if response.status_code == 200:
+                print("✅ Respuesta de la API:", response.json())
+            else:
+                print("❌ Error:", response.status_code, response.text)
+        """
+        
+    
+   
+
+@router.post("/ocr/process-azure", response_model=str)
+async def process_image_ocr_azure(
+    image: UploadFile = File(...),  
+    current_user: Usuario = Depends(get_current_user)
+):
+    """
+    Procesa una imagen usando el servicio OCR de Azure Computer Vision.
+    Envía la imagen al servicio de Azure y espera el resultado del análisis.
+
+    Parameters:
+    - image (UploadFile): Imagen a procesar (JPEG, PNG, GIF o JPG)
+
+    Returns:
+    - str: Texto extraído de la imagen
+
+    Raises:
+    - HTTPException(403): Si el usuario no es profesor ni alumno
+    - HTTPException(500): Si hay un error en el procesamiento con Azure
+    """
+    # Comprobar que el usuario está logueado
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para procesar imágenes OCR"
+        )
+    
+    headers = {
+        'Content-Type': 'application/octet-stream',
+        'Ocp-Apim-Subscription-Key': '9TnsLp0OUYoyH25UP7V5n3mb2tSnm54J4WySPu0IKZwEJNY4RnJ7JQQJ99ALAC5RqLJXJ3w3AAAFACOGHcqc'
+    }
+    
+    try:
+        # Enviar la imagen como datos binarios
+        response = requests.post(
+            "https://pruebarafagvision.cognitiveservices.azure.com/vision/v3.2/read/analyze",
+            headers=headers,
+            data=image.file  # Enviar los bytes directamente
+        )
+        
+        response.raise_for_status()  # Lanzar excepción si hay error
+        
+        # Obtener la URL de operación del header
+        operation_url = response.headers["Operation-Location"]
+        
+        # Esperar a que el análisis termine
+        analysis_result = None
+        while True:
+            result_response = requests.get(
+                operation_url,
+                headers={'Ocp-Apim-Subscription-Key': '9TnsLp0OUYoyH25UP7V5n3mb2tSnm54J4WySPu0IKZwEJNY4RnJ7JQQJ99ALAC5RqLJXJ3w3AAAFACOGHcqc'}
+            )
+            result = result_response.json()
+            
+            if result.get("status") not in ['notStarted', 'running']:
+                analysis_result = result
+                break
+                
+            await asyncio.sleep(1)
+            
+        texto = analysis_result.get("analyzeResult", {}).get("readResults", [{}])[0].get("lines", [])
+        texto = "\n".join([line.get("text", "") for line in texto])
+        
+        return texto
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al procesar la imagen: {str(e)}")
+
+
+
+
+@router.get("/actividad/{actividad_id}/export-csv")
+async def export_submissions_csv(
+    actividad_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los profesores pueden exportar entregas"
+        )
+
+    # Obtener la actividad y sus entregas
+    query = (
+        select(Actividad)
+        .options(
+            selectinload(Actividad.asignatura)
+            .selectinload(Asignatura.inscripciones)
+            .selectinload(Inscripcion.alumno),
+            selectinload(Actividad.entregas)
+            .selectinload(Entrega.alumno)
+        )
+        .where(Actividad.id == actividad_id)
+    )
+    result = await db.execute(query)
+    actividad = result.scalar_one_or_none()
+
+    if not actividad:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Actividad no encontrada"
+        )
+
+    # Verificar que el profesor tiene acceso a esta actividad
+    if actividad.asignatura.profesor_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para exportar estas entregas"
+        )
+
+    # Crear el CSV en memoria
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Nombre', 'Apellidos', 'Email', 'Calificación', 'Estado', 'Fecha Entrega'])
+
+    # Para cada alumno inscrito en la asignatura
+    for inscripcion in actividad.asignatura.inscripciones:
+        alumno = inscripcion.alumno
+        # Buscar su entrega
+        entrega = next(
+            (e for e in actividad.entregas if e.alumno_id == alumno.id),
+            None
+        )
+
+        writer.writerow([
+            alumno.nombre,
+            alumno.apellidos,
+            alumno.email,
+            entrega.calificacion if entrega else "No entregado",
+            "Entregado" if entrega else "No entregado",
+            entrega.fecha_entrega.strftime("%Y-%m-%d %H:%M:%S") if entrega and entrega.fecha_entrega else "-"
+        ])
+
+    # Rebobinar el buffer
+    output.seek(0)
+    
+    # Generar nombre del archivo
+    filename = f"entregas_{actividad.titulo}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={
+            'Content-Disposition': f'attachment; filename="{filename}"'
+        }
+    )
+
+    
+#Endpoint para obtener las entregas de un alumno en una actividad, es solamente una, no es una lista
+@router.get("/alumno/{alumno_id}/actividad/{actividad_id}", response_model=EntregaResponse)
+async def obtener_entregas_alumno_actividad(
+    alumno_id: int,
+    actividad_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para obtener entregas"
+        )
+    
+    # Obtener las entregas del alumno en la actividad
+    query = (
+        select(Entrega)
+        .join(Entrega.actividad)
+        .where(
+            and_(
+                Entrega.alumno_id == alumno_id,
+                Entrega.actividad_id == actividad_id
+            )
+        )
+    )
+    
+    result = await db.execute(query)
+    entregas = result.scalar_one_or_none()
+    # Si no lo encuentra, lanzar un error
+    if not entregas:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontraron entregas para este alumno en esta actividad"
+        )
+    # Comprobar que el alumno que llama es el alumno de la entrega
+    if current_user.tipo_usuario == TipoUsuario.ALUMNO and alumno_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para obtener las entregas de este alumno"
+        )
+    
+    return entregas
+
+
+@router.put("/evaluar-texto-gemini/{entrega_id}", response_model=EntregaResponse)
+async def evaluar_texto_gemini(
+    entrega_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    
+    #comprobar que el usuario esta logueado
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para evaluar entregas"
+        )
+    
+    
+    # Obtener la entrega
+    query = select(Entrega).where(Entrega.id == entrega_id)
+    result = await db.execute(query)
+    entrega = result.scalar_one_or_none()
+    
+    if not entrega:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entrega no encontrada"
+        )
+    
+    # Obtener la actividad
+    query = select(Actividad).where(Actividad.id == entrega.actividad_id)
+    result = await db.execute(query)
+    actividad = result.scalar_one_or_none()
+    
+    if not actividad:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Actividad no encontrada"
+        )
+        
+    # Obtener el texto de la entrega
+    solucion = entrega.texto_ocr
+    
+    # Conectar con la API de Gemini
+    try:
+        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        response = client.models.generate_content(
+            model = "gemini-1.5-flash",
+            contents = [
+                f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo,pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10, en base al enunciado siguiente: {actividad.descripcion}. La solución es: {solucion}. Al final, quiero que me des la nota de la entrega en formato: Nota: n/10"
+            ]
+        )
+        
+        entrega.comentarios = response.text
+        
+        # Extraer la nota del texto y convertirla a float
+        try:
+            nota_texto = response.text.split("Nota: ")[1].split("/")[0]
+            entrega.calificacion = float(nota_texto)  # Convertir a float
+        except (IndexError, ValueError):
+            # Si no se puede extraer la nota, establecer un valor por defecto
+            entrega.calificacion = 0.0
+        
+        await db.commit()
+        await db.refresh(entrega)
+        return entrega
+    except Exception as e:
+        print(f"Error detallado: {str(e)}")  # Para debugging
+        raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
+
+"""
+@router.post("/pruebaGemini", response_model=str)
+async def pruebaGemini(
+    prompt: str
+):
+    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    response = client.models.generate_content(
+        model = "gemini-1.5-flash",
+        contents = [prompt])
+    return response.text
+
+# Obtener entregas de un alumno en una asignatura
+@router.get("/alumno/{alumno_id}/asignatura/{asignatura_id}", response_model=List[EntregaResponse])
+async def obtener_entregas_alumno_asignatura(
+    alumno_id: int,
+    asignatura_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    # Comprobar que el usuario está logueado
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para obtener entregas"
+        )
+        
+    # Comprobar que el alumno es quien esta haciendo la petición
+    if current_user.tipo_usuario == TipoUsuario.ALUMNO and alumno_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para obtener las entregas de este alumno"
+        )
+    
+    # Obtener las entregas del alumno en la asignatura
+    query = (
+        select(Entrega)
+        .join(Entrega.actividad)
+        .join(Actividad.asignatura)
+        .where(
+            and_(
+                Entrega.alumno_id == alumno_id,
+                Asignatura.id == asignatura_id
+            )
+        )
+    )
+    result = await db.execute(query)
+    entregas = result.scalars().all()
+    
+    return entregas
+
+
+
+
+
+
+
+@router.get("/ocr-azure/{entrega_id}")
 async def obtener_ocr_entrega(
     entrega_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
-    # Obtener la entrega
+     # Obtener la entrega
     query = select(Entrega).where(Entrega.id == entrega_id)
     result = await db.execute(query)
     entrega = result.scalar_one_or_none()
@@ -528,7 +746,8 @@ async def obtener_ocr_entrega(
             detail=f"Error al procesar la imagen: {str(e)}"
         )
         
-
+        ---------
+        
 @router.put("/evaluar-ocr/{entrega_id}", response_model=EntregaResponse)
 async def evaluar_entrega(
     entrega_id: int,
@@ -660,8 +879,6 @@ async def evaluar_texto_gemini(
         raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
     
 
-
-    
 #Endpoint para obtener la entrega dado un id de la entrega
 @router.get("/{entrega_id}", response_model=EntregaResponse)
 async def obtener_entrega(
@@ -709,283 +926,214 @@ async def obtener_entrega(
         )
     
     return entrega
-    
-# Función para convertir la imagen a base64
-def image_to_base64(image_file: UploadFile):
-    image = Image.open(image_file.file)
-    buffered = BytesIO()
-    image.save(buffered, format="JPEG")
-    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-    return img_str
 
-# Endpoint para procesar la imagen con OCR usando Gradio
-@router.post("/ocr/process-uco", response_model=str)
-async def process_image_ocr_uco(
-    image: UploadFile = File(...),
-    current_user: Usuario = Depends(get_current_user)
-):
-    # Comprobar que el usuario está logueado
-    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para procesar imágenes OCR"
-        )
         
         
-    files = {"image": (image.filename, image.file, image.content_type)}
-    response = requests.post("http://192.168.117.196:8000/predict/", files=files)
-    
-    # devolver el string de la respuesta que está dentro de prediction en el json
-    if response.status_code == 200:
-        return response.json()["prediction"]
-    else:
-        raise HTTPException(status_code=500, detail=f"Error al procesar la imagen: {response.text}")
-    
-        """
-        import requests
-
-            # URL de la API
-            API_URL = "http://192.168.117.196:8000/predict/"
-
-            # Ruta de la imagen que quieres probar
-            IMAGE_PATH = "folio.jpg"
-
-            # Abrimos la imagen y la enviamos como multipart/form-data
-            with open(IMAGE_PATH, "rb") as image_file:
-                files = {"image": image_file}
-                response = requests.post(API_URL, files=files)
-
-            # Mostramos la respuesta
-            if response.status_code == 200:
-                print("✅ Respuesta de la API:", response.json())
-            else:
-                print("❌ Error:", response.status_code, response.text)
-        """
-        
-    
-   
-
-@router.post("/ocr/process", response_model=str)
-async def process_image_ocr(
-    image: UploadFile = File(...),  
-    current_user: Usuario = Depends(get_current_user)
-):
-    # Comprobar que el usuario está logueado
-    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para procesar imágenes OCR"
-        )
-    
-    headers = {
-        'Content-Type': 'application/octet-stream',
-        'Ocp-Apim-Subscription-Key': '9TnsLp0OUYoyH25UP7V5n3mb2tSnm54J4WySPu0IKZwEJNY4RnJ7JQQJ99ALAC5RqLJXJ3w3AAAFACOGHcqc'
-    }
-    
-    try:
-        # Enviar la imagen como datos binarios
-        response = requests.post(
-            "https://pruebarafagvision.cognitiveservices.azure.com/vision/v3.2/read/analyze",
-            headers=headers,
-            data=image.file  # Enviar los bytes directamente
-        )
-        
-        response.raise_for_status()  # Lanzar excepción si hay error
-        
-        # Obtener la URL de operación del header
-        operation_url = response.headers["Operation-Location"]
-        
-        # Esperar a que el análisis termine
-        analysis_result = None
-        while True:
-            result_response = requests.get(
-                operation_url,
-                headers={'Ocp-Apim-Subscription-Key': '9TnsLp0OUYoyH25UP7V5n3mb2tSnm54J4WySPu0IKZwEJNY4RnJ7JQQJ99ALAC5RqLJXJ3w3AAAFACOGHcqc'}
-            )
-            result = result_response.json()
-            
-            if result.get("status") not in ['notStarted', 'running']:
-                analysis_result = result
-                break
-                
-            await asyncio.sleep(1)
-            
-        texto = analysis_result.get("analyzeResult", {}).get("readResults", [{}])[0].get("lines", [])
-        texto = "\n".join([line.get("text", "") for line in texto])
-        
-        return texto
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al procesar la imagen: {str(e)}")
-
-
-
-@router.post("/pruebaGemini", response_model=str)
-async def pruebaGemini(
-    prompt: str
-):
-    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-    response = client.models.generate_content(
-        model = "gemini-1.5-flash",
-        contents = [prompt])
-    return response.text
-
-# Obtener entregas de un alumno en una asignatura
-@router.get("/alumno/{alumno_id}/asignatura/{asignatura_id}", response_model=List[EntregaResponse])
-async def obtener_entregas_alumno_asignatura(
-    alumno_id: int,
-    asignatura_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user)
-):
-    # Comprobar que el usuario está logueado
-    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para obtener entregas"
-        )
-        
-    # Comprobar que el alumno es quien esta haciendo la petición
-    if current_user.tipo_usuario == TipoUsuario.ALUMNO and alumno_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para obtener las entregas de este alumno"
-        )
-    
-    # Obtener las entregas del alumno en la asignatura
-    query = (
-        select(Entrega)
-        .join(Entrega.actividad)
-        .join(Actividad.asignatura)
-        .where(
-            and_(
-                Entrega.alumno_id == alumno_id,
-                Asignatura.id == asignatura_id
-            )
-        )
-    )
-    result = await db.execute(query)
-    entregas = result.scalars().all()
-    
-    return entregas
-
-@router.get("/actividad/{actividad_id}/export-csv")
-async def export_submissions_csv(
+@router.get("/actividad/{actividad_id}/entregas", response_model=List[EntregaResponse])
+async def obtener_entregas_actividad(
     actividad_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
-    if current_user.tipo_usuario != TipoUsuario.PROFESOR:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo los profesores pueden exportar entregas"
-        )
-
-    # Obtener la actividad y sus entregas
+    # Verificar que la actividad existe y cargar las entregas
     query = (
         select(Actividad)
-        .options(
-            selectinload(Actividad.asignatura)
-            .selectinload(Asignatura.inscripciones)
-            .selectinload(Inscripcion.alumno),
-            selectinload(Actividad.entregas)
-            .selectinload(Entrega.alumno)
-        )
+        .join(Actividad.asignatura)
+        .options(selectinload(Actividad.asignatura))
         .where(Actividad.id == actividad_id)
     )
     result = await db.execute(query)
     actividad = result.scalar_one_or_none()
-
+    
     if not actividad:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Actividad no encontrada"
         )
-
-    # Verificar que el profesor tiene acceso a esta actividad
-    if actividad.asignatura.profesor_id != current_user.id:
+    
+    # Verificar que el usuario es el profesor de la asignatura
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR or actividad.asignatura.profesor_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para exportar estas entregas"
+            detail="No tienes permiso para ver las entregas de esta actividad"
         )
-
-    # Crear el CSV en memoria
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(['Nombre', 'Apellidos', 'Email', 'Calificación', 'Estado', 'Fecha Entrega'])
-
-    # Para cada alumno inscrito en la asignatura
-    for inscripcion in actividad.asignatura.inscripciones:
-        alumno = inscripcion.alumno
-        # Buscar su entrega
-        entrega = next(
-            (e for e in actividad.entregas if e.alumno_id == alumno.id),
-            None
-        )
-
-        writer.writerow([
-            alumno.nombre,
-            alumno.apellidos,
-            alumno.email,
-            entrega.calificacion if entrega else "No entregado",
-            "Entregado" if entrega else "No entregado",
-            entrega.fecha_entrega.strftime("%Y-%m-%d %H:%M:%S") if entrega and entrega.fecha_entrega else "-"
-        ])
-
-    # Rebobinar el buffer
-    output.seek(0)
     
-    # Generar nombre del archivo
-    filename = f"entregas_{actividad.titulo}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    # Obtener solo las entregas sin cargar relaciones adicionales
+    query = select(Entrega).where(Entrega.actividad_id == actividad_id)
+    result = await db.execute(query)
+    entregas = result.scalars().all()
     
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={
-            'Content-Disposition': f'attachment; filename="{filename}"'
-        }
-    )
+    return entregas
 
-    
-#Endpoint para obtener las entregas de un alumno en una actividad, es solamente una, no es una lista
-@router.get("/alumno/{alumno_id}/actividad/{actividad_id}", response_model=EntregaResponse)
-async def obtener_entregas_alumno_actividad(
-    alumno_id: int,
-    actividad_id: int,
+#Endpoint para evaluar entregas
+@router.put("/evaluarLMS/{entrega_id}", response_model=EntregaResponse)
+async def evaluar_entrega(
+    entrega_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user)
+    current_user: Usuario = Depends(get_current_user),
 ):
+    
+    # comprobar que el usuario esta logueado
     if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para obtener entregas"
+            detail="No tienes permiso para evaluar entregas"
         )
     
-    # Obtener las entregas del alumno en la actividad
-    query = (
-        select(Entrega)
-        .join(Entrega.actividad)
-        .where(
-            and_(
-                Entrega.alumno_id == alumno_id,
-                Entrega.actividad_id == actividad_id
-            )
-        )
-    )
     
+    #obtener la entrega
+    query = select(Entrega).where(Entrega.id == entrega_id and Entrega.alumno_id == current_user.id)
     result = await db.execute(query)
-    entregas = result.scalar_one_or_none()
-    # Si no lo encuentra, lanzar un error
-    if not entregas:
+    entrega = result.scalar_one_or_none()
+    
+    #obtener la actividad
+    query = select(Actividad).where(Actividad.id == entrega.actividad_id)
+    result = await db.execute(query)
+    actividad = result.scalar_one_or_none()
+    
+   
+    
+    if entrega.imagen is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No se encontraron entregas para este alumno en esta actividad"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No has subido ningún archivo"
         )
-    # Comprobar que el alumno que llama es el alumno de la entrega
-    if current_user.tipo_usuario == TipoUsuario.ALUMNO and alumno_id != current_user.id:
+
+    #obtener el texto de la imagen
+    texto = await obtener_ocr_entrega(entrega_id, db, current_user)
+    
+    #conectar con la API y mandarle la entrega
+    try:
+
+        # Enviar el texto al LM para evaluación
+        lm_response = requests.post(
+            "http://localhost:1234/v1/chat/completions",  # Ajusta la URL según tu configuración de LMStudio
+            json={
+                "model": "deepseek-coder-v2-lite-instruct",
+                "messages": [
+                { "role": "system", "content": f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo en base al enunciado siguiente: {actividad.descripcion}. También proporciona la nota de la entrega en el formato: Nota: [nota]"},
+                { "role": "user", "content": f"{texto}"}
+                ],
+                "temperature": 0.7,
+                "max_tokens": -1,
+                "stream": "false"
+
+            }
+        )
+        
+        # Verificar si la respuesta fue exitosa
+        lm_response.raise_for_status()  # Lanza una excepción si la respuesta no es exitosa
+
+        entrega.comentarios = lm_response.json()["choices"][0]["message"]["content"]
+        
+        #buscar donde ponga nota:
+        nota = re.search(r'Nota: (\d+)', entrega.comentarios)
+        if nota:
+            entrega.calificacion = int(nota.group(1))
+        else:
+            entrega.calificacion = 0    
+        # Actualizar la entrega en la base de datos
+        await db.commit()
+        await db.refresh(entrega)
+        return entrega
+
+
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en el proceso de evaluación: {str(e)}")
+        
+
+
+@router.post("/", response_model=EntregaResponse)
+async def crear_entrega(
+    entrega: EntregaCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    # Verificar que el usuario es alumno
+    if current_user.tipo_usuario != TipoUsuario.ALUMNO:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para obtener las entregas de este alumno"
+            detail="Solo los alumnos pueden crear entregas"
         )
     
-    return entregas
+    # Verificar que la actividad existe y cargar todas las relaciones necesarias
+    query = (
+        select(Actividad)
+        .join(Actividad.asignatura)
+        .options(
+            selectinload(Actividad.asignatura).selectinload(Asignatura.profesor)
+        )
+        .where(Actividad.id == entrega.actividad_id)
+    )
+    result = await db.execute(query)
+    actividad = result.scalar_one_or_none()
     
+    if not actividad:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Actividad no encontrada"
+        )
+    
+    # Verificar que el alumno está inscrito en la asignatura
+    query = (
+        select(Asignatura)
+        .join(Asignatura.inscripciones)
+        .where(
+            Asignatura.id == actividad.asignatura_id,
+            Inscripcion.alumno_id == current_user.id
+        )
+    )
+    result = await db.execute(query)
+    if not result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No estás inscrito en esta asignatura"
+        )
+    
+    # Verificar que no ha pasado la fecha de entrega
+    if datetime.now() > actividad.fecha_entrega:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La fecha de entrega ya ha pasado"
+        )
+    
+    # Verificar si ya existe una entrega
+    query = select(Entrega).where(
+        Entrega.actividad_id == entrega.actividad_id,
+        Entrega.alumno_id == current_user.id
+    )
+    result = await db.execute(query)
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ya has realizado una entrega para esta actividad"
+        )
+    
+    # Crear entrega
+    db_entrega = Entrega(
+        archivo_entrega=entrega.archivo_entrega,
+        actividad_id=entrega.actividad_id,
+        alumno_id=current_user.id
+    )
+    db.add(db_entrega)
+    await db.commit()
+    await db.refresh(db_entrega)
+    
+    # Cargar todas las relaciones necesarias
+    query = (
+        select(Entrega)
+        .where(Entrega.id == db_entrega.id)
+        .options(
+            selectinload(Entrega.actividad).selectinload(Actividad.asignatura).selectinload(Asignatura.profesor),
+            selectinload(Entrega.alumno)
+        )
+    )
+    result = await db.execute(query)
+    db_entrega = result.scalar_one()
+    
+    return db_entrega
+        
+        
+        
+"""
