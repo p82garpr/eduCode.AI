@@ -1104,3 +1104,48 @@ async def crear_entrega(
         
         
 """
+
+@router.get("/alumno/{alumno_id}/asignatura/{asignatura_id}", response_model=List[EntregaResponse])
+async def obtener_entregas_alumno_asignatura(
+    alumno_id: int,
+    asignatura_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    """
+    Obtiene todas las entregas de un alumno en una asignatura específica.
+    Los profesores pueden ver las entregas de cualquier alumno en sus asignaturas.
+    Los alumnos solo pueden ver sus propias entregas.
+    """
+    # Verificar permisos
+    if current_user.tipo_usuario == TipoUsuario.ALUMNO and current_user.id != alumno_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para ver las entregas de otro alumno"
+        )
+
+    # Obtener las entregas con sus relaciones
+    query = (
+        select(Entrega)
+        .join(Entrega.actividad)
+        .join(Actividad.asignatura)
+        .where(
+            and_(
+                Entrega.alumno_id == alumno_id,
+                Asignatura.id == asignatura_id
+            )
+        )
+        .options(
+            selectinload(Entrega.actividad),
+            selectinload(Entrega.alumno)
+        )
+    )
+
+    # Si es profesor, verificar que la asignatura le pertenece
+    if current_user.tipo_usuario == TipoUsuario.PROFESOR:
+        query = query.where(Asignatura.profesor_id == current_user.id)
+
+    result = await db.execute(query)
+    entregas = result.scalars().all()
+
+    return entregas

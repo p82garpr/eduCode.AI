@@ -112,13 +112,17 @@ class _StudentProgressTabState extends State<StudentProgressTab> {
           final completionRate = widget.activities.isEmpty 
               ? 0.0 
               : completedActivities / widget.activities.length;
-          final averageGrade = submissions.isEmpty 
-              ? 0.0 
-              : submissions
-                  .where((s) => s.calificacion != null)
-                  .map((s) => s.calificacion!)
-                  .fold(0.0, (a, b) => a + b) / 
-                  submissions.where((s) => s.calificacion != null).length;
+          
+          // Calculate average including non-submitted activities as 0
+          final totalActivities = widget.activities.length;
+          final sumOfGrades = submissions
+              .where((s) => s.calificacion != null)
+              .map((s) => s.calificacion!)
+              .fold(0.0, (a, b) => a + b);
+          final averageGrade = totalActivities > 0 
+              ? sumOfGrades / totalActivities 
+              : 0.0;
+          
           final gradeRate = averageGrade / 10;
 
           return SingleChildScrollView(
