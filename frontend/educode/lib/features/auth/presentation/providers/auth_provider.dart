@@ -30,12 +30,14 @@ class AuthProvider extends ChangeNotifier {
       _token = await _authService.login(email, password);
       _currentUser = await _authService.getUserInfo(_token!);
 
-      // Guardar en almacenamiento seguro
+      // Guardar toda la información necesaria en el almacenamiento seguro
       await _secureStorage.saveToken(_token!);
       await _secureStorage.saveUserInfo(
         id: _currentUser!.id.toString(),
         type: _currentUser!.tipoUsuario,
         name: _currentUser!.nombre,
+        email: _currentUser!.email,
+        lastName: _currentUser!.apellidos,
       );
 
       _isLoading = false;
@@ -58,15 +60,50 @@ class AuthProvider extends ChangeNotifier {
 
   // Método para verificar si hay una sesión guardada al iniciar la app
   Future<bool> checkAuthStatus() async {
-    final token = await _secureStorage.getToken();
-    if (token != null) {
-      _token = token;
+    try {
+      final token = await _secureStorage.getToken();
+
+      if (token == null) {
+        return false;
+      }
+
       final userInfo = await _secureStorage.getUserInfo();
-      // Aquí podrías hacer una llamada al backend para obtener los datos actualizados del usuario
-      notifyListeners();
-      return true;
+
+      if (userInfo == null || userInfo['id'] == null) {
+        return false;
+      }
+
+      _token = token;
+      
+      try {
+        _currentUser = await _authService.getUserInfo(token);
+      } catch (e) {
+        // Si falla la conexión con el servidor, usamos los datos almacenados
+        _currentUser = UserModel(
+          id: userInfo['id'] ?? '',
+          nombre: userInfo['name'] ?? '',
+          tipoUsuario: userInfo['type'] ?? '',
+          email: userInfo['email'] ?? '',
+          apellidos: userInfo['lastName'] ?? '',
+        );
+      }
+
+      // Solo notificamos si hay un cambio real en el estado
+      if (_currentUser != null) {
+        // Usamos Future.microtask para evitar notificaciones durante el build
+        Future.microtask(() => notifyListeners());
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      _token = null;
+      _currentUser = null;
+      await _secureStorage.clearAll();
+      // Usamos Future.microtask para evitar notificaciones durante el build
+      Future.microtask(() => notifyListeners());
+      return false;
     }
-    return false;
   }
 
   Future<bool> register(String email, String password, String name, String lastName) async {

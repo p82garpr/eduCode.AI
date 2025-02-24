@@ -21,7 +21,9 @@
         android:label="educode"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:requestLegacyExternalStorage="true">
+        android:requestLegacyExternalStorage="true"
+        android:enableOnBackInvokedCallback="true">
+
 
          <provider
             android:name="androidx.core.content.FileProvider"

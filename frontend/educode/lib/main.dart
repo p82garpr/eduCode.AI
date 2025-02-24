@@ -74,7 +74,21 @@ class MyApp extends StatelessWidget {
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
           themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-          initialRoute: '/login',
+          home: FutureBuilder(
+            future: Provider.of<AuthProvider>(context, listen: false).checkAuthStatus(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Scaffold(
+                  body: Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                );
+              }
+
+              final isAuthenticated = snapshot.data ?? false;
+              return isAuthenticated ? const HomePage() : const LoginPage();
+            },
+          ),
           routes: {
             '/login': (context) => const LoginPage(),
             '/home': (context) => const HomePage(),
