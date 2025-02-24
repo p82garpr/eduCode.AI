@@ -69,6 +69,7 @@ class AuthProvider extends ChangeNotifier {
 
       final userInfo = await _secureStorage.getUserInfo();
 
+      // ignore: unnecessary_null_comparison
       if (userInfo == null || userInfo['id'] == null) {
         return false;
       }
