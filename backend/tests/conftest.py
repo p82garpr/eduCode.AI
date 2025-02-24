@@ -64,7 +64,7 @@ async def test_db() -> AsyncGenerator:
     app.dependency_overrides.clear()
 
 @pytest.fixture(scope="session")
-async def client() -> AsyncClient:
+async def client() -> AsyncClient: # type: ignore
     async with AsyncClient(app=app, base_url="http://test") as ac:
         yield ac
 
