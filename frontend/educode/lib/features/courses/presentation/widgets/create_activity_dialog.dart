@@ -13,11 +13,27 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
   final _descriptionController = TextEditingController();
   DateTime _dueDate = DateTime.now().add(const Duration(days: 7));
   TimeOfDay _dueTime = TimeOfDay.now();
+  final _parametersController = TextEditingController();
+  String? _selectedLanguage;
+
+  final _programmingLanguages = [
+    'Python',
+    'JavaScript',
+    'Java',
+    'C++',
+    'C',
+    'C#',
+    'TypeScript',
+    'Dart',
+    'Kotlin',
+    'Swift',
+  ];
 
   @override
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
+    _parametersController.dispose();
     super.dispose();
   }
 
@@ -78,6 +94,39 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                             }
                             return null;
                           },
+                        ),
+                        const SizedBox(height: 16),
+                        DropdownButtonFormField<String>(
+                          decoration: const InputDecoration(
+                            labelText: 'Lenguaje de programación (opcional)',
+                            border: OutlineInputBorder(),
+                          ),
+                          value: _selectedLanguage,
+                          items: [
+                            const DropdownMenuItem<String>(
+                              value: null,
+                              child: Text('Sin lenguaje específico'),
+                            ),
+                            ..._programmingLanguages.map((String language) {
+                              return DropdownMenuItem<String>(
+                                value: language,
+                                child: Text(language),
+                              );
+                            }).toList(),
+                          ],
+                          onChanged: (String? value) {
+                            setState(() => _selectedLanguage = value);
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _parametersController,
+                          decoration: const InputDecoration(
+                            labelText: 'Parámetros a valorar (opcional)',
+                            border: OutlineInputBorder(),
+                            helperText: 'Escribe los aspectos específicos a evaluar en la solucion del problema',
+                          ),
+                          maxLines: 3,
                         ),
                         const SizedBox(height: 16),
                         const Text(
@@ -235,6 +284,10 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                             _dueTime.hour,
                             _dueTime.minute,
                           ).toUtc().toIso8601String(),
+                          'lenguaje_programacion': _selectedLanguage,
+                          'parametros_evaluacion': _parametersController.text.isEmpty 
+                              ? null 
+                              : _parametersController.text,
                         });
                       }
                     },

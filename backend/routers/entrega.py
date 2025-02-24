@@ -590,32 +590,116 @@ async def evaluar_texto_gemini(
     # Obtener el texto de la entrega
     solucion = entrega.texto_ocr
     
-    # Conectar con la API de Gemini
-    try:
-        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-        response = client.models.generate_content(
-            model = "gemini-1.5-flash",
-            contents = [
-                f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo,pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: {actividad.descripcion}. La solución es: {solucion}. Al final, quiero que me des la nota de la entrega en formato: Nota: n/10. Si no tiene nada que ver con la actividad, escribe que no tiene nada que ver con la actividad y pon de nota 0."
-            ]
-        )
-        
-        entrega.comentarios = response.text
-        
-        # Extraer la nota del texto y convertirla a float
+    # Obtener el lenguaje de la actividad
+    lenguaje = actividad.lenguaje_programacion
+    # Obtener los parametros de evaluacion
+    parametros = actividad.parametros_evaluacion
+    
+    if lenguaje != None and parametros != None:
         try:
-            nota_texto = response.text.split("Nota: ")[1].split("/")[0]
-            entrega.calificacion = float(nota_texto)  # Convertir a float
-        except (IndexError, ValueError):
-            # Si no se puede extraer la nota, establecer un valor por defecto
-            entrega.calificacion = 0.0
-        
-        await db.commit()
-        await db.refresh(entrega)
-        return entrega
-    except Exception as e:
-        print(f"Error detallado: {str(e)}")  # Para debugging
-        raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
+            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+            response = client.models.generate_content(
+                model = "gemini-1.5-flash",
+                contents = [
+                    f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo,pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: {actividad.descripcion}. La solución es: {solucion}. Al final, quiero que me des la nota de la entrega en formato: Nota: n/10. Si no tiene nada que ver con la actividad, escribe que no tiene nada que ver con la actividad y pon de nota 0. La solución debe estar en {lenguaje} y los criterios que tendras en cuenta para evaluar la solución son: {parametros}"
+                ]
+            )
+            
+            entrega.comentarios = response.text
+            
+            # Extraer la nota del texto y convertirla a float
+            try:
+                nota_texto = response.text.split("Nota: ")[1].split("/")[0]
+                entrega.calificacion = float(nota_texto)  # Convertir a float
+            except (IndexError, ValueError):
+                # Si no se puede extraer la nota, establecer un valor por defecto
+                entrega.calificacion = 0.0
+            
+            await db.commit()
+            await db.refresh(entrega)
+            return entrega
+        except Exception as e:
+            print(f"Error detallado: {str(e)}")  # Para debugging
+            raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
+    elif lenguaje != None and parametros == None:
+        try:
+            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+            response = client.models.generate_content(
+                model = "gemini-1.5-flash",
+                contents = [
+                    f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo,pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: {actividad.descripcion}. La solución es: {solucion}. Al final, quiero que me des la nota de la entrega en formato: Nota: n/10. Si no tiene nada que ver con la actividad, escribe que no tiene nada que ver con la actividad y pon de nota 0. La solución debe estar en {lenguaje}."
+                ]
+            )
+            
+            entrega.comentarios = response.text
+            
+            # Extraer la nota del texto y convertirla a float
+            try:
+                nota_texto = response.text.split("Nota: ")[1].split("/")[0]
+                entrega.calificacion = float(nota_texto)  # Convertir a float
+            except (IndexError, ValueError):
+                # Si no se puede extraer la nota, establecer un valor por defecto
+                entrega.calificacion = 0.0
+            
+            await db.commit()
+            await db.refresh(entrega)
+            return entrega
+        except Exception as e:
+            print(f"Error detallado: {str(e)}")  # Para debugging
+            raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
+    elif lenguaje == None and parametros != None:
+        try:
+            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+            response = client.models.generate_content(
+                model = "gemini-1.5-flash",
+                contents = [
+                    f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo,pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: {actividad.descripcion}. La solución es: {solucion}. Al final, quiero que me des la nota de la entrega en formato: Nota: n/10. Si no tiene nada que ver con la actividad, escribe que no tiene nada que ver con la actividad y pon de nota 0. Los criterios que tendras en cuenta para evaluar la solución son: {parametros}"
+                ]
+            )
+            
+            entrega.comentarios = response.text
+            
+            # Extraer la nota del texto y convertirla a float
+            try:
+                nota_texto = response.text.split("Nota: ")[1].split("/")[0]
+                entrega.calificacion = float(nota_texto)  # Convertir a float
+            except (IndexError, ValueError):
+                # Si no se puede extraer la nota, establecer un valor por defecto
+                entrega.calificacion = 0.0
+            
+            await db.commit()
+            await db.refresh(entrega)
+            return entrega
+        except Exception as e:
+            print(f"Error detallado: {str(e)}")  # Para debugging
+            raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
+    else:
+        try:
+            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+            response = client.models.generate_content(
+                model = "gemini-1.5-flash",
+                contents = [
+                    f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo,pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: {actividad.descripcion}. La solución es: {solucion}. Al final, quiero que me des la nota de la entrega en formato: Nota: n/10. Si no tiene nada que ver con la actividad, escribe que no tiene nada que ver con la actividad y pon de nota 0."
+                ]
+            )
+            
+            entrega.comentarios = response.text
+            
+            # Extraer la nota del texto y convertirla a float
+            try:
+                nota_texto = response.text.split("Nota: ")[1].split("/")[0]
+                entrega.calificacion = float(nota_texto)  # Convertir a float
+            except (IndexError, ValueError):
+                # Si no se puede extraer la nota, establecer un valor por defecto
+                entrega.calificacion = 0.0
+            
+            await db.commit()
+            await db.refresh(entrega)
+            return entrega
+        except Exception as e:
+            print(f"Error detallado: {str(e)}")  # Para debugging
+            raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
+    
     
 #Endpoint para obtener la entrega dado un id de la entrega
 @router.get("/{entrega_id}", response_model=EntregaResponse)

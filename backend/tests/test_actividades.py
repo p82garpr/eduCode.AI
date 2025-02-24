@@ -1,3 +1,8 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import asyncio
 import pytest
 from httpx import AsyncClient
 from main import app
@@ -108,9 +113,9 @@ async def test_crear_y_borrar_asignatura():
         response = await ac.post(
             "/api/v1/registro",
             json={
-                "email": "profesor3@test.com",
-                "nombre": "Test3",
-                "apellidos": "Profesor3",
+                "email": "profesor6@test.com",
+                "nombre": "Test6",
+                "apellidos": "Profesor6",
                 "tipo_usuario": "Profesor",
                 "password": "testpass123",
             }
@@ -121,7 +126,7 @@ async def test_crear_y_borrar_asignatura():
         response = await ac.post(
             "/api/v1/login",
             data={
-                "username": "profesor3@test.com",
+                "username": "profesor6@test.com",
                 "password": "testpass123"
             }
         )
@@ -134,7 +139,8 @@ async def test_crear_y_borrar_asignatura():
             headers={"Authorization": f"Bearer {token}"},
             json={
                 "nombre": "Test Asignatura",
-                "descripcion": "Descripción de prueba"
+                "descripcion": "Descripción de prueba",
+                "codigo_acceso": "testpass123"
             }
         )
         assert response.status_code == 200
@@ -163,12 +169,13 @@ async def test_crear_y_borrar_asignatura():
 async def test_crear_actividad():
     async with AsyncClient(app=app, base_url="http://test") as ac:
         # Crear profesor y obtener token
+        #breakpoint()
         response = await ac.post(
             "/api/v1/registro",
             json={
-                "email": "profesor4@test.com",
-                "nombre": "Test4",
-                "apellidos": "Profesor4",
+                "email": "profesor5@test.com",
+                "nombre": "Test5",
+                "apellidos": "Profesor5",
                 "tipo_usuario": "Profesor",
                 "password": "testpass123",
             }
@@ -178,7 +185,7 @@ async def test_crear_actividad():
         response = await ac.post(
             "/api/v1/login",
             data={
-                "username": "profesor4@test.com",
+                "username": "profesor5@test.com",
                 "password": "testpass123"
             }
         )
@@ -191,7 +198,9 @@ async def test_crear_actividad():
             headers={"Authorization": f"Bearer {token}"},
             json={
                 "nombre": "Test Asignatura",
-                "descripcion": "Descripción de prueba"
+                "descripcion": "Descripción de prueba",
+                "codigo_acceso": "testpass123"
+                
             }
         )
         assert response.status_code == 200
@@ -228,7 +237,7 @@ async def test_crear_actividad():
         assert response.status_code == 200
         
 
-        # Borrar el profesor
+        # TODO: Borrar el profesor
         # Obtener el ID del profesor
         response = await ac.get("/api/v1/me", headers={"Authorization": f"Bearer {token}"})
         assert response.status_code == 200
@@ -238,4 +247,11 @@ async def test_crear_actividad():
             headers={"Authorization": f"Bearer {token}"}
         )
         assert response.status_code == 204
+
+
+# Para debugging
+if __name__ == "__main__":
+    # Configurar breakpoint donde quieras
+    # import pdb; pdb.set_trace()
+    pytest.main([__file__, '-v'])
 

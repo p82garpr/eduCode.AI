@@ -395,6 +395,54 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
                             ),
                           ),
                           const SizedBox(height: 16),
+                          if (_activity!.lenguajeProgramacion != null) ...[
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.code,
+                                  size: 20,
+                                  color: theme.colorScheme.secondary,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Lenguaje: ${_activity!.lenguajeProgramacion}',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: theme.colorScheme.secondary,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                          if (_activity!.parametrosEvaluacion != null) ...[
+                            Text(
+                              'Criterios de evaluación:',
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                color: theme.colorScheme.onSurface,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: theme.colorScheme.outline.withOpacity(0.2),
+                                ),
+                              ),
+                              child: Text(
+                                _activity!.parametrosEvaluacion!,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onSurface,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
                           Row(
                             children: [
                               Icon(

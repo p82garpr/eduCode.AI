@@ -12,6 +12,8 @@ class Actividad(Base):
     fecha_creacion = Column(DateTime, server_default=func.now())
     fecha_entrega = Column(DateTime, nullable=False)
     asignatura_id = Column(Integer, ForeignKey("asignaturas.id", ondelete="CASCADE"), nullable=False)
+    lenguaje_programacion = Column(String(50), nullable=True)
+    parametros_evaluacion = Column(Text, nullable=True)
 
     # Relaciones
     asignatura = relationship("Asignatura", back_populates="actividades")

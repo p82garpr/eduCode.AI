@@ -8,6 +8,8 @@ class ActividadBase(BaseModel):
     descripcion: Optional[str] = None
     fecha_entrega: datetime
 
+
+
     @validator('fecha_entrega')
     def ensure_naive_datetime(cls, v):
         if v.tzinfo is not None:
@@ -17,11 +19,15 @@ class ActividadBase(BaseModel):
 
 class ActividadCreate(ActividadBase):
     asignatura_id: int
+    lenguaje_programacion: Optional[str] = None
+    parametros_evaluacion: Optional[str] = None
 
 class ActividadResponse(ActividadBase):
     id: int
     fecha_creacion: datetime
     asignatura_id: int
+    lenguaje_programacion: Optional[str] = None
+    parametros_evaluacion: Optional[str] = None
     #asignatura: Optional[AsignaturaResponse] = None
 
     class Config:
@@ -31,6 +37,9 @@ class ActividadUpdate(BaseModel):
     titulo: Optional[str] = None
     descripcion: Optional[str] = None
     fecha_entrega: Optional[datetime] = None
+    lenguaje_programacion: Optional[str] = None
+    parametros_evaluacion: Optional[str] = None
+
 
     @validator('fecha_entrega')
     def ensure_naive_datetime(cls, v):

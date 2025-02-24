@@ -4,10 +4,13 @@ from main import app
 
 @pytest.mark.asyncio
 async def test_crear_asignatura(test_db, profesor_token):
-    async with AsyncClient(app=app, base_url="http://127.0.0.1:8000") as ac:
+    # Ya no necesitamos anext() porque profesor_token es una coroutine, no un generador
+    token = await profesor_token
+    
+    async with AsyncClient(app=app, base_url="http://test") as ac:
         response = await ac.post(
             "/api/v1/asignaturas/",
-            headers={"Authorization": f"Bearer {await profesor_token}"},
+            headers={"Authorization": f"Bearer {token}"},
             json={
                 "nombre": "Matemáticas",
                 "descripcion": "Curso de matemáticas básicas"
