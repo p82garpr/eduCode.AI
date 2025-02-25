@@ -200,7 +200,16 @@ async def actualizar_asignatura(
         db_asignatura.codigo_acceso = pwd_context.hash(asignatura_update.codigo_acceso)
     
     await db.commit()
-    await db.refresh(db_asignatura)
+    
+    # Volver a cargar la asignatura con la relación del profesor para la respuesta
+    query = (
+        select(Asignatura)
+        .where(Asignatura.id == asignatura_id)
+        .options(selectinload(Asignatura.profesor))
+    )
+    result = await db.execute(query)
+    db_asignatura = result.scalar_one()
+    
     return db_asignatura
 
 @router.delete("/{asignatura_id}")

@@ -3,13 +3,16 @@ from models.usuario import Base
 from routers import usuario, auth, asignatura, inscripcion, actividad, entrega
 from database import init_db
 import asyncio
+from contextlib import asynccontextmanager
 
-app = FastAPI()
-
-# Inicializar las tablas
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Código que se ejecuta al iniciar
     await init_db()
+    yield
+    # Código que se ejecuta al cerrar (si es necesario)
+
+app = FastAPI(lifespan=lifespan)
 
 app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
 app.include_router(usuario.router, prefix="/api/v1", tags=["usuarios"])

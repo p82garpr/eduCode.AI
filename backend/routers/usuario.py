@@ -148,6 +148,7 @@ async def eliminar_usuario(
 ):
     """
     Elimina un usuario del sistema.
+    Solo los profesores pueden eliminar usuarios.
 
     Parameters:
     - usuario_id (int): ID del usuario a eliminar
@@ -157,9 +158,17 @@ async def eliminar_usuario(
 
     Raises:
     - HTTPException(404): Si el usuario no existe
+    - HTTPException(403): Si el usuario no tiene permisos para eliminar
     - HTTPException(401): Si el usuario no está autenticado
     """
-    # Obtener el usuario
+    # Verificar que el usuario actual es profesor
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los profesores pueden eliminar usuarios"
+        )
+    
+    # Obtener el usuario a eliminar
     query = select(Usuario).where(Usuario.id == usuario_id)
     result = await db.execute(query)
     usuario = result.scalar_one_or_none()
@@ -168,6 +177,13 @@ async def eliminar_usuario(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Usuario no encontrado"
+        )
+    
+    # No permitir que un profesor se elimine a sí mismo
+    if usuario.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No puedes eliminarte a ti mismo"
         )
     
     # Eliminar el usuario
@@ -332,32 +348,35 @@ async def update_user(
     - HTTPException(401): Si el usuario no está autenticado
     """
     try:
-        # Verificar si el email ya existe para otro usuario
-        query = select(Usuario).where(
-            and_(
-                Usuario.email == user_data.email,
-                Usuario.id != current_user.id
+        # Verificar si el email ya existe para otro usuario (solo si está cambiando el email)
+        if user_data.email != current_user.email:
+            query = select(Usuario).where(
+                and_(
+                    Usuario.email == user_data.email,
+                    Usuario.id != current_user.id
+                )
             )
-        )
-        result = await db.execute(query)
-        existing_user = result.scalar_one_or_none()
+            result = await db.execute(query)
+            existing_user = result.scalar_one_or_none()
+            
+            if existing_user:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El email ya está en uso por otro usuario"
+                )
         
-        if existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El email ya está en uso"
-            )
-        
-        # Actualizar los datos del usuario
+        # Actualizar los datos del usuario manteniendo el tipo_usuario
         update_data = {
             "nombre": user_data.nombre,
             "apellidos": user_data.apellidos,
             "email": user_data.email,
+            "tipo_usuario": current_user.tipo_usuario  # Mantener el tipo de usuario actual para evitar cambios
         }
         
         if user_data.password:
             update_data["contrasena"] = pwd_context.hash(user_data.password)
         
+        # Obtener el usuario actualizado con todos los campos
         query = (
             update(Usuario)
             .where(Usuario.id == current_user.id)
@@ -368,6 +387,9 @@ async def update_user(
         result = await db.execute(query)
         await db.commit()
         
+        # Luego obtener el usuario actualizado
+        query = select(Usuario).where(Usuario.id == current_user.id)
+        result = await db.execute(query)
         updated_user = result.scalar_one()
         return updated_user
         

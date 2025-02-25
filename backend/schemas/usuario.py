@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from models.usuario import TipoUsuario
 
@@ -10,7 +10,7 @@ class UsuarioBase(BaseModel):
     tipo_usuario: TipoUsuario
 
 class UsuarioCreate(UsuarioBase):
-    password: str
+    password: str = Field(..., min_length=5, description="La contraseña debe tener al menos 5 caracteres")
 
 class UsuarioResponse(UsuarioBase):
     id: int

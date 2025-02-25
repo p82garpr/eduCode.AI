@@ -21,6 +21,7 @@ import io
 import csv
 from google import genai
 import os
+import mimetypes
 
 router = APIRouter()
 
@@ -230,9 +231,7 @@ async def crear_entrega(
         
         # Procesar la imagen
         contenido = await imagen.read()
-        tipo_imagen = imghdr.what(None, contenido)
-        
-        if tipo_imagen not in ['jpeg', 'png', 'gif', 'jpg']:
+        if not verificar_tipo_imagen(contenido):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="El archivo debe ser una imagen (JPEG, PNG, GIF o JPG)"
@@ -247,7 +246,7 @@ async def crear_entrega(
             calificacion=None,
             comentarios=None,
             imagen=contenido,
-            tipo_imagen=tipo_imagen,
+            tipo_imagen=mimetypes.guess_type(imagen.filename)[0],
             nombre_archivo=imagen.filename
         )
 
@@ -1233,3 +1232,17 @@ async def obtener_entregas_alumno_asignatura(
     entregas = result.scalars().all()
 
     return entregas
+
+def verificar_tipo_imagen(contenido: bytes) -> bool:
+    # Verificar los primeros bytes del archivo para determinar si es una imagen
+    signatures = {
+        b'\xFF\xD8\xFF': 'image/jpeg',  # JPEG
+        b'\x89PNG\r\n': 'image/png',    # PNG
+        b'GIF87a': 'image/gif',         # GIF
+        b'GIF89a': 'image/gif',         # GIF
+    }
+    
+    for signature, mime_type in signatures.items():
+        if contenido.startswith(signature):
+            return True
+    return False

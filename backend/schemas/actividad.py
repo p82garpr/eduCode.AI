@@ -1,4 +1,4 @@
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator, ConfigDict
 from datetime import datetime
 from typing import Optional
 from schemas.asignatura import AsignaturaResponse
@@ -8,12 +8,10 @@ class ActividadBase(BaseModel):
     descripcion: Optional[str] = None
     fecha_entrega: datetime
 
-
-
-    @validator('fecha_entrega')
+    @field_validator('fecha_entrega')
+    @classmethod
     def ensure_naive_datetime(cls, v):
         if v.tzinfo is not None:
-            # Convertir a UTC y luego quitar la información de zona horaria
             v = v.astimezone().replace(tzinfo=None)
         return v
 
@@ -30,8 +28,7 @@ class ActividadResponse(ActividadBase):
     parametros_evaluacion: Optional[str] = None
     #asignatura: Optional[AsignaturaResponse] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ActividadUpdate(BaseModel):
     titulo: Optional[str] = None
@@ -40,8 +37,8 @@ class ActividadUpdate(BaseModel):
     lenguaje_programacion: Optional[str] = None
     parametros_evaluacion: Optional[str] = None
 
-
-    @validator('fecha_entrega')
+    @field_validator('fecha_entrega')
+    @classmethod
     def ensure_naive_datetime(cls, v):
         if v and v.tzinfo is not None:
             v = v.astimezone().replace(tzinfo=None)
