@@ -332,11 +332,49 @@ async def obtener_actividad(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes permiso para ver esta actividad"
         )
-    # Obtener la actividad
-    query = select(Actividad).where(Actividad.id == actividad_id)
+    # Obtener la actividad con sus relaciones
+    query = (
+        select(Actividad)
+        .options(
+            selectinload(Actividad.asignatura)
+            .selectinload(Asignatura.profesor)
+        )
+        .where(Actividad.id == actividad_id)
+    )
     result = await db.execute(query)
-    #devolver solamente los campos de la actividad  
     actividad = result.scalar_one_or_none()
+    
+    # Si no existe la actividad, lanzar error 404
+    if not actividad:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Actividad no encontrada"
+        )
+        
+    # Si es alumno, verificar que está inscrito en la asignatura
+    if current_user.tipo_usuario == TipoUsuario.ALUMNO:
+        query = (
+            select(Inscripcion)
+            .where(
+                Inscripcion.alumno_id == current_user.id,
+                Inscripcion.asignatura_id == actividad.asignatura_id
+            )
+        )
+        result = await db.execute(query)
+        inscripcion = result.scalar_one_or_none()
+        if not inscripcion:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No estás inscrito en la asignatura de esta actividad"
+            )
+    # Si es profesor, verificar que es el profesor de la asignatura
+    elif current_user.tipo_usuario == TipoUsuario.PROFESOR:
+        if actividad.asignatura.profesor_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No eres el profesor de esta actividad"
+            )
+            
     return actividad
   
 

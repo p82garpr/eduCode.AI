@@ -274,16 +274,21 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                   FilledButton(
                     onPressed: () {
                       if (_formKey.currentState!.validate()) {
+                        final dueDateTime = DateTime(
+                          _dueDate.year,
+                          _dueDate.month,
+                          _dueDate.day,
+                          _dueTime.hour,
+                          _dueTime.minute,
+                        );
+                        
+                        // Asegurarnos de que la fecha está en UTC y tiene el formato correcto
+                        final utcDueDate = dueDateTime.toUtc();
+                        
                         Navigator.pop(context, {
                           'titulo': _titleController.text,
                           'descripcion': _descriptionController.text,
-                          'fecha_entrega': DateTime(
-                            _dueDate.year,
-                            _dueDate.month,
-                            _dueDate.day,
-                            _dueTime.hour,
-                            _dueTime.minute,
-                          ).toUtc().toIso8601String(),
+                          'fecha_entrega': utcDueDate.toIso8601String(),
                           'lenguaje_programacion': _selectedLanguage,
                           'parametros_evaluacion': _parametersController.text.isEmpty 
                               ? null 

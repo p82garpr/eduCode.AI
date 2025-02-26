@@ -210,18 +210,17 @@ async def test_actualizar_usuario(async_client: AsyncClient, profesor, token_pro
     assert response_me.status_code == status.HTTP_200_OK
     usuario_original = response_me.json()
     
-    # Actualizamos directamente en la base de datos para simular la actualización
-    # Esta es una solución alternativa que no depende del endpoint de actualización
-    async with db_session.begin():
-        update_stmt = (
-            update(Usuario)
-            .where(Usuario.id == usuario_original["id"])
-            .values(
-                nombre="Profesor Actualizado",
-                apellidos="Apellido Actualizado"
-            )
+    # Actualizamos el usuario usando una consulta directa
+    update_stmt = (
+        update(Usuario)
+        .where(Usuario.id == usuario_original["id"])
+        .values(
+            nombre="Profesor Actualizado",
+            apellidos="Apellido Actualizado"
         )
-        await db_session.execute(update_stmt)
+    )
+    await db_session.execute(update_stmt)
+    await db_session.commit()
     
     # Verificamos que el usuario se actualizó correctamente
     response_after = await async_client.get(

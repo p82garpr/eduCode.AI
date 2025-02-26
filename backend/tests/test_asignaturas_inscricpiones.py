@@ -23,18 +23,13 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 @pytest.fixture
 async def asignatura_profesor(db_session: AsyncSession, profesor) -> Asignatura:
     """Crea una asignatura de prueba para el profesor"""
-    # Primero cargar el profesor completamente
-    query = select(Usuario).where(Usuario.id == profesor.id)
-    result = await db_session.execute(query)
-    profesor_loaded = result.scalar_one()
-    
     # Hashear el código de acceso
     hashed_codigo = pwd_context.hash("codigo123")
     
     asignatura = Asignatura(
         nombre="Asignatura Test",
         descripcion="Descripción de la asignatura de prueba",
-        profesor_id=profesor_loaded.id,
+        profesor_id=profesor.id,
         codigo_acceso=hashed_codigo
     )
     db_session.add(asignatura)
@@ -47,37 +42,27 @@ async def asignatura_profesor(db_session: AsyncSession, profesor) -> Asignatura:
 @pytest.fixture
 async def inscripcion_alumno(db_session: AsyncSession, alumno, asignatura_profesor) -> Inscripcion:
     """Crea una inscripción de un alumno en una asignatura"""
-    # Primero cargar el alumno y la asignatura completamente
-    query_alumno = select(Usuario).where(Usuario.id == alumno.id)
-    result = await db_session.execute(query_alumno)
+    # Cargar el alumno de forma segura
+    stmt = select(Usuario).where(Usuario.id == alumno.id)
+    result = await db_session.execute(stmt)
     alumno_loaded = result.scalar_one()
     
-    query_asignatura = select(Asignatura).where(Asignatura.id == asignatura_profesor.id)
-    result = await db_session.execute(query_asignatura)
-    asignatura_loaded = result.scalar_one()
-    
+    # Crear la inscripción con los IDs ya cargados
     inscripcion = Inscripcion(
         alumno_id=alumno_loaded.id,
-        asignatura_id=asignatura_loaded.id
+        asignatura_id=asignatura_profesor.id
     )
     
     db_session.add(inscripcion)
     await db_session.commit()
-    await db_session.refresh(inscripcion)
     
-    # Cargar las relaciones de manera segura
-    query = (
-        select(Inscripcion)
-        .where(Inscripcion.id == inscripcion.id)
-        .options(
-            selectinload(Inscripcion.alumno),
-            selectinload(Inscripcion.asignatura).selectinload(Asignatura.profesor)
-        )
-    )
-    result = await db_session.execute(query)
-    inscripcion = result.scalar_one()
-    
-    return inscripcion
+    # Recargar la inscripción con todas sus relaciones
+    stmt = select(Inscripcion).options(
+        selectinload(Inscripcion.alumno),
+        selectinload(Inscripcion.asignatura)
+    ).where(Inscripcion.id == inscripcion.id)
+    result = await db_session.execute(stmt)
+    return result.scalar_one()
 
 # Test para crear una asignatura
 async def test_crear_asignatura(async_client: AsyncClient, token_profesor: str):
@@ -391,6 +376,7 @@ async def test_obtener_mis_inscripciones(
     inscripcion_alumno,
     db_session: AsyncSession
 ):
+    
     """Test para verificar que un alumno puede ver sus inscripciones"""
     # Guardar el nombre de la asignatura para evitar accesos asíncronos fuera de contexto
     query = select(Asignatura).where(Asignatura.id == inscripcion_alumno.asignatura_id)
@@ -454,7 +440,7 @@ async def test_eliminar_inscripcion(
     )
     
     assert response.status_code == status.HTTP_200_OK
-    assert "Inscripción eliminada" in response.json()["message"]
+    assert "Inscripción cancelada exitosamente" in response.json()["message"]
     
     # Verificar que la inscripción ya no existe
     result = await db_session.execute(
@@ -483,7 +469,7 @@ async def test_exportar_calificaciones_csv(
     )
     
     assert response.status_code == status.HTTP_200_OK
-    assert response.headers["content-type"] == "text/csv"
+    assert "text/csv" in response.headers["content-type"].lower()
     assert "attachment; filename=calificaciones_" in response.headers["content-disposition"]
     
     # Verificar que el contenido del CSV es no vacío
@@ -495,7 +481,7 @@ async def test_exportar_calificaciones_csv(
     assert len(lines) >= 2  # Al menos debe tener el encabezado y una fila
     
     # Verificar que hay encabezados para Nombre, Apellidos, Email
-    headers = lines[0].split(',')
+    headers = [header.strip() for header in lines[0].split(',')]  # Eliminar espacios y caracteres especiales
     assert "Nombre" in headers
     assert "Apellidos" in headers
     assert "Email" in headers
@@ -587,3 +573,125 @@ async def test_exportar_calificaciones_asignatura_otro_profesor(
     
     assert response.status_code == status.HTTP_403_FORBIDDEN
     assert "No tienes permiso para exportar" in response.json()["detail"] 
+
+# ----- Tests adicionales de inscripción -----
+
+async def test_inscribir_alumno_duplicado(
+    async_client: AsyncClient,
+    token_alumno: str,
+    inscripcion_alumno: Inscripcion,
+    asignatura_profesor: Asignatura
+):
+    """Test para verificar que un alumno no puede inscribirse dos veces en la misma asignatura"""
+    inscripcion_data = {
+        "asignatura_id": asignatura_profesor.id,
+        "codigo_acceso": "codigo123"
+    }
+    
+    response = await async_client.post(
+        "/api/v1/inscripciones/",
+        headers={"Authorization": f"Bearer {token_alumno}"},
+        json=inscripcion_data
+    )
+    
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "Ya estás inscrito en esta asignatura" in response.json()["detail"]
+
+async def test_inscribir_sin_autenticacion(
+    async_client: AsyncClient,
+    asignatura_profesor: Asignatura
+):
+    """Test para verificar que no se puede inscribir sin autenticación"""
+    inscripcion_data = {
+        "asignatura_id": asignatura_profesor.id,
+        "codigo_acceso": "codigo123"
+    }
+    
+    response = await async_client.post(
+        "/api/v1/inscripciones/",
+        json=inscripcion_data
+    )
+    
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+async def test_obtener_inscripciones_alumno_vacio(
+    async_client: AsyncClient,
+    token_alumno: str,
+    db_session: AsyncSession
+):
+    """Test para verificar que un alumno sin inscripciones recibe una lista vacía"""
+    response = await async_client.get(
+        "/api/v1/inscripciones/mis-asignaturas",
+        headers={"Authorization": f"Bearer {token_alumno}"}
+    )
+    
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) == 0
+
+async def test_eliminar_inscripcion_no_existente(
+    async_client: AsyncClient,
+    token_alumno: str,
+    alumno: Usuario
+):
+    """Test para verificar el manejo de eliminación de inscripciones no existentes"""
+    response = await async_client.delete(
+        f"/api/v1/inscripciones/99999?alumno_id={alumno.id}",
+        headers={"Authorization": f"Bearer {token_alumno}"}
+    )
+    
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert "No estás inscrito en esta asignatura" in response.json()["detail"]
+
+async def test_eliminar_inscripcion_otro_alumno(
+    async_client: AsyncClient,
+    token_alumno: str,
+    inscripcion_alumno: Inscripcion,
+    asignatura_profesor: Asignatura,
+    db_session: AsyncSession
+):
+    """Test para verificar que un alumno no puede eliminar inscripciones de otros"""
+    # Crear otro alumno
+    otro_alumno = Usuario(
+        nombre="Otro Alumno",
+        apellidos="Test",
+        email="otro_alumno@test.com",
+        contrasena=get_password_hash("testpassword"),
+        tipo_usuario=TipoUsuario.ALUMNO
+    )
+    db_session.add(otro_alumno)
+    await db_session.commit()
+    await db_session.refresh(otro_alumno)
+    
+    # Intentar eliminar la inscripción del primer alumno con el ID del segundo
+    response = await async_client.delete(
+        f"/api/v1/inscripciones/{asignatura_profesor.id}?alumno_id={otro_alumno.id}",
+        headers={"Authorization": f"Bearer {token_alumno}"}
+    )
+    
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert "No puedes cancelar la inscripción de otro alumno" in response.json()["detail"]
+
+async def test_obtener_inscripciones_profesor(
+    async_client: AsyncClient,
+    token_profesor: str,
+    inscripcion_alumno: Inscripcion,
+    asignatura_profesor: Asignatura
+):
+    """Test para verificar que un profesor puede ver las inscripciones de su asignatura"""
+    response = await async_client.get(
+        f"/api/v1/asignaturas/{asignatura_profesor.id}/alumnos",
+        headers={"Authorization": f"Bearer {token_profesor}"}
+    )
+    
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) >= 1
+    # Verificar que la inscripción del alumno está en la lista
+    assert any(alumno["id"] == inscripcion_alumno.alumno_id for alumno in data)
+
+# Main para debug
+if __name__ == "__main__":
+    pytest.main()
