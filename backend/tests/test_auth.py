@@ -26,8 +26,8 @@ async def test_user(db_session: AsyncSession) -> Usuario:
     await db_session.refresh(user)
     return user
 
-async def test_login_successful(client, test_user):
-    response = client.post(
+async def test_login_successful(async_client, test_user):
+    response = await async_client.post(
         "/api/v1/login",
         data={
             "username": "test@example.com",
@@ -39,8 +39,8 @@ async def test_login_successful(client, test_user):
     assert "access_token" in data
     assert data["token_type"] == "bearer"
 
-async def test_login_incorrect_password(client, test_user):
-    response = client.post(
+async def test_login_incorrect_password(async_client, test_user):
+    response = await async_client.post(
         "/api/v1/login",
         data={
             "username": "test@example.com",
@@ -49,8 +49,8 @@ async def test_login_incorrect_password(client, test_user):
     )
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-async def test_login_nonexistent_user(client):
-    response = client.post(
+async def test_login_nonexistent_user(async_client):
+    response = await async_client.post(
         "/api/v1/login",
         data={
             "username": "nonexistent@example.com",

@@ -380,4 +380,15 @@ async def test_eliminar_actividad_con_entregas(
     # Verificar que la actividad y sus entregas fueron eliminadas
     query = select(Actividad).where(Actividad.id == actividad_prueba.id)
     result = await db_session.execute(query)
-    assert result.scalar_one_or_none() is None 
+    assert result.scalar_one_or_none() is None
+
+@pytest.fixture
+async def actividad_creada(async_client: AsyncClient, token_profesor, actividad_prueba, asignatura_prueba):
+    actividad_prueba["asignatura_id"] = asignatura_prueba["id"]
+    response = await async_client.post(
+        "/api/v1/actividades",
+        headers={"Authorization": f"Bearer {token_profesor}"},
+        json=actividad_prueba
+    )
+    assert response.status_code == status.HTTP_201_CREATED
+    return response.json() 

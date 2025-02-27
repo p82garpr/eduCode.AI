@@ -11,7 +11,7 @@ from models.asignatura import Asignatura
 from models.usuario import Usuario, TipoUsuario
 from schemas.entrega import EntregaCreate, EntregaUpdate, EntregaResponse
 from security import get_current_user
-from datetime import datetime
+from datetime import datetime, UTC
 import requests
 import imghdr  # Para verificar el tipo de imagen
 import asyncio
@@ -175,18 +175,19 @@ async def calificar_entrega(
 async def crear_entrega(
     actividad_id: int,
     textoOcr: str = Form(...),
-    imagen: UploadFile = File(...),  # Cambiado a requerido y especificado como File
+    imagen: UploadFile = File(None),  # Hacemos la imagen opcional
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
     """
     Crea una nueva entrega para una actividad.
     Solo los alumnos pueden crear entregas.
+    La imagen es opcional, pero el texto OCR es obligatorio.
 
     Parameters:
     - actividad_id (int): ID de la actividad
-    - textoOcr (str): Texto extraído de la imagen mediante OCR
-    - imagen (UploadFile): Archivo de imagen con la solución
+    - textoOcr (str): Texto de la solución
+    - imagen (UploadFile, opcional): Archivo de imagen con la solución
 
     Returns:
     - EntregaResponse: Datos de la entrega creada
@@ -194,7 +195,7 @@ async def crear_entrega(
     Raises:
     - HTTPException(403): Si el usuario no es alumno
     - HTTPException(404): Si la actividad no existe
-    - HTTPException(400): Si ya existe una entrega o el formato de imagen no es válido
+    - HTTPException(400): Si ya existe una entrega
     """
     try:
         # Verificar que el usuario es un alumno
@@ -229,25 +230,36 @@ async def crear_entrega(
                 detail="Ya existe una entrega para esta actividad"
             )
         
-        # Procesar la imagen
-        contenido = await imagen.read()
-        if not verificar_tipo_imagen(contenido):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El archivo debe ser una imagen (JPEG, PNG, GIF o JPG)"
-            )
+        # Variables para la imagen
+        contenido = None
+        tipo_imagen = None
+        nombre_archivo = None
         
-        # Crear la entrega con todos los campos
+        # Procesar la imagen si se proporciona
+        if imagen:
+            contenido = await imagen.read()
+            if not verificar_tipo_imagen(contenido):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El archivo debe ser una imagen (JPEG, PNG, GIF o JPG)"
+                )
+            tipo_imagen = mimetypes.guess_type(imagen.filename)[0]
+            nombre_archivo = imagen.filename
+        
+        # Crear la fecha de entrega sin zona horaria
+        fecha_entrega = datetime.now(UTC).replace(tzinfo=None)
+        
+        # Crear la entrega
         entrega = Entrega(
             texto_ocr=textoOcr,
             actividad_id=actividad_id,
             alumno_id=current_user.id,
-            fecha_entrega=datetime.utcnow(),
+            fecha_entrega=fecha_entrega,
             calificacion=None,
             comentarios=None,
             imagen=contenido,
-            tipo_imagen=mimetypes.guess_type(imagen.filename)[0],
-            nombre_archivo=imagen.filename
+            tipo_imagen=tipo_imagen,
+            nombre_archivo=nombre_archivo
         )
 
         # Guardar en la base de datos
