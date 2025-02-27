@@ -65,11 +65,22 @@ class _HomePageState extends State<HomePage> {
     ];
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_getTitle(isTeacher)),
+      appBar: _selectedIndex == 0 ? null : AppBar(
+        title: Text(
+          _getTitle(isTeacher),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onPrimary,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: Icon(
+              Icons.logout,
+              color: Theme.of(context).colorScheme.onPrimary,
+            ),
             onPressed: () {
               context.read<AuthProvider>().logout();
               Navigator.pushReplacement(
@@ -86,24 +97,69 @@ class _HomePageState extends State<HomePage> {
       body: isTeacher 
         ? teacherPages[_selectedIndex == 2 ? 1 : _selectedIndex]
         : studentPages[_selectedIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        items: [
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.school),
-            label: 'Mis Cursos',
-          ),
-          if (!isTeacher)
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.search),
-              label: 'Buscar Cursos',
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: Theme.of(context).colorScheme.shadow.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, -5),
             ),
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Perfil',
-          ),
-        ],
+          ],
+        ),
+        child: NavigationBar(
+          selectedIndex: _selectedIndex,
+          onDestinationSelected: _onItemTapped,
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          indicatorColor: Theme.of(context).colorScheme.primaryContainer,
+          shadowColor: Colors.transparent,
+          surfaceTintColor: Colors.transparent,
+          height: 65,
+          labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+          animationDuration: const Duration(milliseconds: 500),
+          destinations: [
+            NavigationDestination(
+              icon: Icon(
+                Icons.school_outlined,
+                color: _selectedIndex == 0 
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              selectedIcon: Icon(
+                Icons.school,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              label: 'Mis Cursos',
+            ),
+            if (!isTeacher)
+              NavigationDestination(
+                icon: Icon(
+                  Icons.search_outlined,
+                  color: _selectedIndex == 1 
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                selectedIcon: Icon(
+                  Icons.search,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                label: 'Buscar Cursos',
+              ),
+            NavigationDestination(
+              icon: Icon(
+                Icons.person_outline,
+                color: _selectedIndex == (isTeacher ? 1 : 2)
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              selectedIcon: Icon(
+                Icons.person,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              label: 'Perfil',
+            ),
+          ],
+        ),
       ),
       floatingActionButton: isTeacher && _selectedIndex == 0
           ? FloatingActionButton(

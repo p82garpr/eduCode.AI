@@ -195,4 +195,22 @@ class SubmissionProvider extends ChangeNotifier {
       rethrow;
     }
   }
+
+  Future<String> getSubmissionImageUrl(int submissionId, String token) async {
+    try {
+      _isLoading = true;
+      notifyListeners();
+
+      final url = await _submissionService.getSubmissionImageUrl(submissionId, token);
+      
+      _isLoading = false;
+      notifyListeners();
+      return url;
+    } catch (e) {
+      _isLoading = false;
+      _error = e.toString();
+      notifyListeners();
+      throw Exception('Error al obtener la URL de la imagen: ${e.toString()}');
+    }
+  }
 } 

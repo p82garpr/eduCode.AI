@@ -10,7 +10,8 @@ import 'package:educode/features/courses/presentation/providers/subjects_provide
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:async' show unawaited;
-
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class StudentActivitySubmissionPage extends StatefulWidget {
   const StudentActivitySubmissionPage({super.key});
@@ -46,7 +47,7 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
   String _getSubmissionStatus() {
     if (_existingSubmission == null) return 'No entregado';
     if (_existingSubmission?.calificacion == null) return 'Pendiente de evaluación';
-    return 'Entregado y evaluado';
+    return 'Calificación: ${_existingSubmission!.calificacion!.toStringAsFixed(1)}';
   }
 
   Color _getStatusColor(BuildContext context) {
@@ -72,11 +73,9 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
 
       debugPrint('Cargando actividad ID: $activityId');
       
-      // Primero cargamos la actividad
       final activity = await context.read<ActivityProvider>().getActivity(activityId, token);
       debugPrint('Actividad cargada exitosamente: ${activity.titulo}');
       
-      // Intentamos cargar la entrega, pero no es un error si no existe
       Submission? submission;
       try {
         submission = await context.read<SubmissionProvider>().getStudentSubmission2(
@@ -88,10 +87,8 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
       } catch (e) {
         if (e.toString().contains('404')) {
           debugPrint('No hay entrega previa - esto es normal');
-          // No es un error, simplemente no hay entrega
           submission = null;
         } else {
-          // Si es otro tipo de error, lo propagamos
           rethrow;
         }
       }
@@ -128,7 +125,6 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
       return;
     }
 
-    // Verificar la actividad
     if (_activity == null) {
       debugPrint('Error: _activity es null');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -137,7 +133,6 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
       return;
     }
 
-    // Verificar que hay texto o imagen
     if (_solutionController.text.isEmpty && _imageFile == null) {
       debugPrint('Error: No hay texto ni imagen para enviar');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -156,7 +151,6 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
         throw Exception('No se ha encontrado el token de autenticación');
       }
 
-      // Enviar la entrega
       final entrega = await context.read<SubmissionProvider>().submitActivity(
         _activity!.id,
         _solutionController.text,
@@ -166,30 +160,24 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
 
       if (!mounted) return;
 
-      // Mostrar mensaje de éxito y volver atrás
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Solución enviada correctamente')),
-      );
-      Navigator.pop(context);
-
-      // Evaluar la entrega en segundo plano
-      unawaited(
-        context.read<SubmissionProvider>().evaluateSubmissionWithGemini(entrega.id, token).then((_) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Entrega evaluada correctamente')),
-          );
-        }).catchError((e) {
-          debugPrint('Error al evaluar con Gemini: $e');
-          // No mostramos el error al usuario ya que es un proceso en segundo plano
-        }),
+        const SnackBar(
+          content: Text('¡Entrega realizada con éxito!'),
+          backgroundColor: Colors.green,
+        ),
       );
 
+      setState(() {
+        _existingSubmission = entrega;
+        _imageFile = null;
+      });
     } catch (e) {
-      debugPrint('Error detallado en submitSolution: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al enviar la solución: $e')),
+        SnackBar(
+          content: Text('Error al realizar la entrega: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     } finally {
       if (mounted) {
@@ -198,113 +186,70 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
     }
   }
 
-  Future<void> _getImage(ImageSource source) async {
+  Future<void> _pickImage() async {
     try {
-      final XFile? image = await _picker.pickImage(
-        source: source,
-        imageQuality: 85,
-      );
-
+      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
       if (image != null) {
         setState(() {
           _imageFile = File(image.path);
-          _isProcessingOcr = true;
+          _processingImage = true;
         });
 
-        // Procesar la imagen con OCR
-        // ignore: use_build_context_synchronously, unused_local_variable
-        final provider = context.read<SubjectsProvider>();
-        // ignore: use_build_context_synchronously
-        final token = context.read<AuthProvider>().token;
-        final text = await context.read<SubmissionProvider>().processImageOCR(_imageFile!, token ?? '');
+        // Aquí iría el procesamiento de la imagen si es necesario
 
-        if (mounted) {
-          setState(() {
-            _solutionController.text = text;
-            _isProcessingOcr = false;
-          });
-        }
+        setState(() {
+          _processingImage = false;
+        });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _isProcessingOcr = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al procesar la imagen: $e')),
-        );
-      }
-    }
-  }
-
-  void _showImageSourceDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Seleccionar imagen'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('Tomar foto'),
-              onTap: () {
-                Navigator.pop(context);
-                _getImage(ImageSource.camera);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('Galería'),
-              onTap: () {
-                Navigator.pop(context);
-                _getImage(ImageSource.gallery);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _processOCR() async {
-    if (_imageFile == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No hay imagen para procesar')),
+        SnackBar(
+          content: Text('Error al seleccionar la imagen: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
-      return;
-    }
-
-    setState(() => _isProcessingOcr = true);
-    
-    try {
-      final token = context.read<AuthProvider>().token;
-      final text = await context.read<SubmissionProvider>().processImageOCR(_imageFile!, token ?? '');
-      
-      setState(() {
-        _solutionController.text = text;
-      });
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al procesar la imagen: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isProcessingOcr = false);
-      }
     }
   }
 
   bool _isSubmissionAllowed() {
     if (_activity == null) return false;
-    
-    // Depurar las fechas
     final now = DateTime.now();
-    debugPrint('Fecha actual: $now');
-    debugPrint('Fecha límite: ${_activity!.fechaEntrega}');
-    
-    // Si no hay entrega previa y estamos en fecha, permitir entrega
     return _existingSubmission == null && now.isBefore(_activity!.fechaEntrega);
+  }
+
+  Future<void> _downloadImage() async {
+    if (_existingSubmission == null || _existingSubmission!.nombreArchivo == null) return;
+
+    try {
+      setState(() => _isLoading = true);
+
+      final token = context.read<AuthProvider>().token;
+      if (token == null) throw Exception('No se encontró el token de autenticación');
+
+      final url = await context.read<SubmissionProvider>().getSubmissionImageUrl(
+        _existingSubmission!.id,
+        token,
+      );
+
+      if (!mounted) return;
+
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else {
+        throw Exception('No se pudo abrir la URL');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al descargar la imagen: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -317,9 +262,10 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
     }
 
     final theme = Theme.of(context);
+    final colors = theme.colorScheme;
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
+      backgroundColor: colors.surface,
       appBar: AppBar(
         title: Text(
           _existingSubmission != null ? 'Detalles de la Entrega' : 'Nueva Entrega',
@@ -327,483 +273,375 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
             fontWeight: FontWeight.bold,
           ),
         ),
-        backgroundColor: theme.colorScheme.surface,
+        backgroundColor: colors.surface,
         elevation: 0,
       ),
-      body: Form(
-        key: _formKey,
+      body: AnimationLimiter(
         child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: AnimationConfiguration.toStaggeredList(
+              duration: const Duration(milliseconds: 600),
+              childAnimationBuilder: (widget) => SlideAnimation(
+                horizontalOffset: 50.0,
+                child: FadeInAnimation(child: widget),
+              ),
               children: [
                 if (_activity != null) ...[
-                  Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surface,
+                  Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: theme.shadowColor.withOpacity(0.1),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
+                      side: BorderSide(color: colors.outline.withOpacity(0.2)),
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.all(20.0),
+                      padding: const EdgeInsets.all(16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             children: [
-                              Icon(
-                                Icons.assignment,
-                                color: theme.colorScheme.primary,
-                                size: 28,
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: colors.primaryContainer,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(
+                                  Icons.assignment_outlined,
+                                  color: colors.onPrimaryContainer,
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
-                                child: Text(
-                                  _activity!.titulo,
-                                  style: theme.textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    color: theme.colorScheme.onSurface,
-                                  ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _activity!.titulo,
+                                      style: theme.textTheme.titleLarge?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Fecha límite: ${_formatDate(_activity!.fechaEntrega)}',
+                                      style: TextStyle(
+                                        color: DateTime.now().isAfter(_activity!.fechaEntrega)
+                                            ? colors.error
+                                            : colors.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 16),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.surface.withOpacity(0.5),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: theme.colorScheme.outline.withOpacity(0.1),
-                              ),
-                            ),
-                            child: Text(
+                          if (_activity!.descripcion.isNotEmpty) ...[
+                            const SizedBox(height: 16),
+                            Text(
                               _activity!.descripcion,
                               style: theme.textTheme.bodyLarge?.copyWith(
-                                color: theme.colorScheme.onSurface,
+                                color: colors.onSurfaceVariant,
                               ),
                             ),
-                          ),
+                          ],
                           const SizedBox(height: 16),
-                          if (_activity!.lenguajeProgramacion != null) ...[
-                            Row(
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: _getStatusColor(context).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  Icons.code,
-                                  size: 20,
-                                  color: theme.colorScheme.secondary,
+                                  _existingSubmission != null
+                                      ? _existingSubmission!.calificacion != null
+                                          ? Icons.check_circle
+                                          : Icons.pending
+                                      : Icons.error_outline,
+                                  size: 16,
+                                  color: _getStatusColor(context),
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  'Lenguaje: ${_activity!.lenguajeProgramacion}',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: theme.colorScheme.secondary,
+                                  _getSubmissionStatus(),
+                                  style: TextStyle(
+                                    color: _getStatusColor(context),
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 16),
-                          ],
-                          if (_activity!.parametrosEvaluacion != null) ...[
-                            Text(
-                              'Criterios de evaluación:',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                color: theme.colorScheme.onSurface,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: theme.colorScheme.outline.withOpacity(0.2),
-                                ),
-                              ),
-                              child: Text(
-                                _activity!.parametrosEvaluacion!,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: theme.colorScheme.onSurface,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.access_time,
-                                color: _activity!.fechaEntrega.isBefore(DateTime.now())
-                                    ? theme.colorScheme.error
-                                    : theme.colorScheme.primary,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Fecha límite: ${_formatDate(_activity!.fechaEntrega)}',
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: _activity!.fechaEntrega.isBefore(DateTime.now())
-                                      ? theme.colorScheme.error
-                                      : theme.colorScheme.primary,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
                           ),
                         ],
                       ),
                     ),
                   ),
                   const SizedBox(height: 24),
-                ],
-                
-                Card(
-                  elevation: 4,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    _existingSubmission != null 
-                                        ? Icons.check_circle
-                                        : Icons.pending_actions,
-                                    color: _getStatusColor(context),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Flexible(
-                                    child: Text(
-                                      'Estado: ${_getSubmissionStatus()}',
-                                      style: theme.textTheme.titleMedium?.copyWith(
-                                        color: _getStatusColor(context),
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (_existingSubmission?.calificacion != null) ...[
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.primary.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  'Nota: ${_existingSubmission!.calificacion!.toStringAsFixed(2)}/10',
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    color: theme.colorScheme.primary,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        if (_existingSubmission?.calificacion != null) ...[
-                          const SizedBox(height: 20),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primary.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: theme.colorScheme.primary.withOpacity(0.2),
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (_existingSubmission?.comentarios != null && 
-                                    _existingSubmission!.comentarios!.isNotEmpty) ...[
-                                  Text(
-                                    'Feedback de la entrega:',
-                                    style: theme.textTheme.titleSmall?.copyWith(
-                                      color: theme.colorScheme.onSurface,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: theme.colorScheme.surface,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: theme.colorScheme.outline.withOpacity(0.2),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      _existingSubmission!.comentarios!,
-                                      style: theme.textTheme.bodyMedium?.copyWith(
-                                        color: theme.colorScheme.onSurface,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ],
+
+                  if (_isSubmissionAllowed()) ...[
+                    Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Tu solución',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                        ],
-                        const SizedBox(height: 20),
-                        if (_existingSubmission == null) ...[
-                          Center(
-                            child: Column(
-                              children: [
-                                if (_imageFile != null) ...[
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: Image.file(
-                                      _imageFile!,
-                                      height: 200,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  ElevatedButton.icon(
-                                    onPressed: _isProcessingOcr ? null : _processOCR,
-                                    icon: const Icon(Icons.refresh),
-                                    label: Text(_isProcessingOcr 
-                                      ? 'Procesando imagen...' 
-                                      : 'Re-procesar OCR'),
-                                    style: ElevatedButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 24,
-                                        vertical: 12,
-                                      ),
-                                      backgroundColor: theme.colorScheme.secondary,
-                                      foregroundColor: theme.colorScheme.onSecondary,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                ],
-                                ElevatedButton.icon(
-                                  onPressed: !_isSubmissionAllowed()
-                                      ? null  // Deshabilitar si la fecha ha pasado
-                                      : (_processingImage 
-                                          ? null 
-                                          : _showImageSourceDialog),
-                                  icon: const Icon(Icons.camera_alt),
-                                  label: Text(
-                                    !_isSubmissionAllowed()
-                                        ? 'Fecha límite superada'
-                                        : (_processingImage 
-                                            ? 'Procesando imagen...' 
-                                            : 'Capturar o seleccionar imagen')
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 24,
-                                      vertical: 12,
-                                    ),
-                                    backgroundColor: theme.colorScheme.primary,
-                                    foregroundColor: theme.colorScheme.onPrimary,
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _solutionController,
+                            maxLines: null,
+                            minLines: 5,
+                            decoration: InputDecoration(
+                              hintText: 'Escribe tu solución aquí...',
+                              filled: true,
+                              fillColor: colors.surfaceVariant.withOpacity(0.3),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: colors.outline),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: colors.outline.withOpacity(0.5)),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: colors.primary, width: 2),
+                              ),
+                            ),
+                            validator: (value) {
+                              if ((value == null || value.isEmpty) && _imageFile == null) {
+                                return 'Por favor, proporciona una solución o sube una imagen';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: _pickImage,
+                                  icon: const Icon(Icons.image_outlined),
+                                  label: const Text('Subir imagen'),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
                                     ),
-                                    disabledBackgroundColor: theme.colorScheme.surfaceContainerHighest,
-                                    disabledForegroundColor: theme.colorScheme.onSurfaceVariant,
                                   ),
                                 ),
-                                if (!_isSubmissionAllowed()) ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'La fecha límite de entrega ha pasado',
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      color: theme.colorScheme.error,
-                                      fontStyle: FontStyle.italic,
-                                    ),
-                                  ),
-                                ],
-                                const SizedBox(height: 20),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Texto extraído:',
-                                      style: theme.textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    TextFormField(
-                                      controller: _solutionController,
-                                      decoration: InputDecoration(
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                        filled: true,
-                                        fillColor: theme.colorScheme.surface,
-                                        hintText: 'El texto extraído aparecerá aquí',
-                                      ),
-                                      maxLines: 10,
-                                      validator: (value) {
-                                        if (value == null || value.isEmpty) {
-                                          return 'Por favor, introduce una solución';
-                                        }
-                                        return null;
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ] else ...[
-                          ExpansionTile(
-                            title: Text(
-                              'Texto extraído',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
                               ),
-                            ),
-                            initiallyExpanded: _isTextExpanded,
-                            onExpansionChanged: (expanded) {
-                              setState(() => _isTextExpanded = expanded);
-                            },
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.all(16.0),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    TextFormField(
-                                      controller: _solutionController,
-                                      decoration: InputDecoration(
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                        filled: true,
-                                        fillColor: theme.colorScheme.surface.withOpacity(0.5),
-                                      ),
-                                      maxLines: 10,
-                                      readOnly: true,
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: FilledButton.icon(
+                                  onPressed: _submitSolution,
+                                  icon: const Icon(Icons.send_outlined),
+                                  label: const Text('Entregar'),
+                                  style: FilledButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
-                                    if (_existingSubmission?.calificacion == null) ...[
-                                      const SizedBox(height: 16),
-                                      SizedBox(
-                                        width: double.infinity,
-                                        child: ElevatedButton.icon(
-                                          onPressed: () async {
-                                            setState(() => _isLoading = true);
-                                            try {
-                                              final authProvider = context.read<AuthProvider>();
-                                              await context.read<SubmissionProvider>().evaluateSubmissionWithGemini(
-                                                _existingSubmission!.id,
-                                                authProvider.token!,
-                                              );
-                                              // Recargar los datos después de evaluar
-                                              await _loadData();
-                                              if (!mounted) return;
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(
-                                                  content: Text('Entrega evaluada correctamente'),
-                                                  backgroundColor: Colors.green,
-                                                ),
-                                              );
-                                            } catch (e) {
-                                              debugPrint('Error al evaluar: $e');
-                                              if (!mounted) return;
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                SnackBar(
-                                                  content: Text('Error al evaluar la entrega: $e'),
-                                                  backgroundColor: Colors.red,
-                                                ),
-                                              );
-                                            } finally {
-                                              if (mounted) {
-                                                setState(() => _isLoading = false);
-                                              }
-                                            }
-                                          },
-                                          icon: const Icon(Icons.assessment),
-                                          label: const Text('Evaluar entrega'),
-                                          style: ElevatedButton.styleFrom(
-                                            padding: const EdgeInsets.symmetric(vertical: 16),
-                                            backgroundColor: theme.colorScheme.primary,
-                                            foregroundColor: theme.colorScheme.onPrimary,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(12),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
+                                  ),
                                 ),
                               ),
                             ],
                           ),
-                        ],
-                        const SizedBox(height: 20),
-                        if (_existingSubmission == null)
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: (!_isSubmissionAllowed() || _isProcessingOcr)
-                                  ? null
-                                  : _submitSolution,
-                              style: ElevatedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                                backgroundColor: theme.colorScheme.primary,
-                                foregroundColor: theme.colorScheme.onPrimary,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                disabledBackgroundColor: theme.colorScheme.surfaceContainerHighest,
-                                disabledForegroundColor: theme.colorScheme.onSurfaceVariant,
+                          if (_imageFile != null) ...[
+                            const SizedBox(height: 16),
+                            Card(
+                              elevation: 0,
+                              color: colors.surfaceVariant.withOpacity(0.3),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(color: colors.outline.withOpacity(0.2)),
                               ),
-                              child: Text(
-                                !_isSubmissionAllowed()
-                                    ? 'Fecha límite superada'
-                                    : (_isProcessingOcr 
-                                        ? 'Procesando OCR...' 
-                                        : 'Enviar Solución'),
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.image),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Imagen seleccionada: ${_imageFile!.path.split('/').last}',
+                                        style: theme.textTheme.bodyMedium,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.close),
+                                      onPressed: () => setState(() => _imageFile = null),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
-                          ),
-                      ],
+                          ],
+                        ],
+                      ),
                     ),
-                  ),
-                ),
+                  ] else if (_existingSubmission != null) ...[
+                    Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: BorderSide(color: colors.outline.withOpacity(0.2)),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Tu entrega',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            if (_existingSubmission!.textoOcr?.isNotEmpty ?? false) ...[
+                              Text(
+                                'Solución:',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: colors.surfaceVariant.withOpacity(0.3),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: colors.outline.withOpacity(0.2),
+                                  ),
+                                ),
+                                child: Text(
+                                  _existingSubmission!.textoOcr!,
+                                  style: theme.textTheme.bodyMedium,
+                                ),
+                              ),
+                            ],
+                            if (_existingSubmission!.nombreArchivo != null) ...[
+                              const SizedBox(height: 16),
+                              Text(
+                                'Imagen adjunta:',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: colors.surfaceVariant.withOpacity(0.3),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: colors.outline.withOpacity(0.2),
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.image_outlined,
+                                          color: colors.primary,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            _existingSubmission!.nombreArchivo!,
+                                            style: theme.textTheme.bodyMedium,
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: Icon(
+                                            Icons.download_outlined,
+                                            color: colors.primary,
+                                          ),
+                                          onPressed: _downloadImage,
+                                          tooltip: 'Descargar imagen',
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 16),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: colors.primaryContainer.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: colors.outline.withOpacity(0.2),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.calendar_today_outlined,
+                                    size: 20,
+                                    color: colors.primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Entregado el ${_formatDate(_existingSubmission!.fechaEntrega)}',
+                                    style: TextStyle(
+                                      color: colors.primary,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ] else ...[
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: colors.errorContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.error_outline,
+                            color: colors.onErrorContainer,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'La fecha límite de entrega ha pasado',
+                              style: TextStyle(
+                                color: colors.onErrorContainer,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
               ],
             ),
           ),

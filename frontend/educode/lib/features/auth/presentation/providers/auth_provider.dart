@@ -67,42 +67,27 @@ class AuthProvider extends ChangeNotifier {
         return false;
       }
 
-      final userInfo = await _secureStorage.getUserInfo();
-
-      // ignore: unnecessary_null_comparison
-      if (userInfo == null || userInfo['id'] == null) {
+      try {
+        _token = token;
+        _currentUser = await _authService.getUserInfo(token);
+        
+        // Si llegamos aquí, el token es válido
+        notifyListeners();
+        return true;
+      } catch (e) {
+        // Si hay un error al obtener la información del usuario,
+        // asumimos que el token expiró o es inválido
+        _token = null;
+        _currentUser = null;
+        await _secureStorage.clearAll();
+        notifyListeners();
         return false;
       }
-
-      _token = token;
-      
-      try {
-        _currentUser = await _authService.getUserInfo(token);
-      } catch (e) {
-        // Si falla la conexión con el servidor, usamos los datos almacenados
-        _currentUser = UserModel(
-          id: userInfo['id'] ?? '',
-          nombre: userInfo['name'] ?? '',
-          tipoUsuario: userInfo['type'] ?? '',
-          email: userInfo['email'] ?? '',
-          apellidos: userInfo['lastName'] ?? '',
-        );
-      }
-
-      // Solo notificamos si hay un cambio real en el estado
-      if (_currentUser != null) {
-        // Usamos Future.microtask para evitar notificaciones durante el build
-        Future.microtask(() => notifyListeners());
-        return true;
-      }
-
-      return false;
     } catch (e) {
       _token = null;
       _currentUser = null;
       await _secureStorage.clearAll();
-      // Usamos Future.microtask para evitar notificaciones durante el build
-      Future.microtask(() => notifyListeners());
+      notifyListeners();
       return false;
     }
   }

@@ -1,7 +1,39 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
+import 'dart:ui';
 
 class CreateActivityDialog extends StatefulWidget {
   const CreateActivityDialog({super.key});
+
+  static Future<Map<String, dynamic>?> show(BuildContext context) async {
+    return showGeneralDialog<Map<String, dynamic>>(
+      context: context,
+      pageBuilder: (context, animation, secondaryAnimation) => const CreateActivityDialog(),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curvedAnimation = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutBack,
+        );
+        return BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: 4 * curvedAnimation.value,
+            sigmaY: 4 * curvedAnimation.value,
+          ),
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.8, end: 1.0).animate(curvedAnimation),
+            child: FadeTransition(
+              opacity: curvedAnimation,
+              child: child,
+            ),
+          ),
+        );
+      },
+      transitionDuration: const Duration(milliseconds: 300),
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.black54,
+    );
+  }
 
   @override
   State<CreateActivityDialog> createState() => _CreateActivityDialogState();
@@ -37,241 +69,308 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
     super.dispose();
   }
 
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _dueDate,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme,
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && picked != _dueDate) {
+      setState(() {
+        _dueDate = picked;
+      });
+    }
+  }
+
+  Future<void> _selectTime(BuildContext context) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _dueTime,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme,
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && picked != _dueTime) {
+      setState(() {
+        _dueTime = picked;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+
     return Dialog(
+      backgroundColor: colors.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(28),
+      ),
       child: ConstrainedBox(
         constraints: const BoxConstraints(
-          maxWidth: 400,
-          maxHeight: 600,
+          maxWidth: 500,
+          maxHeight: 700,
         ),
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(24.0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'Nueva actividad',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
+              Row(
+                children: [
+                  Icon(
+                    Icons.assignment_add,
+                    color: colors.primary,
+                    size: 32,
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    'Nueva actividad',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: colors.primary,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
               Expanded(
                 child: SingleChildScrollView(
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        TextFormField(
-                          controller: _titleController,
-                          decoration: const InputDecoration(
-                            labelText: 'Título',
-                            border: OutlineInputBorder(),
+                  child: AnimationLimiter(
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: AnimationConfiguration.toStaggeredList(
+                          duration: const Duration(milliseconds: 300),
+                          childAnimationBuilder: (widget) => SlideAnimation(
+                            verticalOffset: 20,
+                            child: FadeInAnimation(child: widget),
                           ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Por favor ingrese un título';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _descriptionController,
-                          decoration: const InputDecoration(
-                            labelText: 'Descripción',
-                            border: OutlineInputBorder(),
-                          ),
-                          maxLines: 5,
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Por favor ingrese una descripción';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        DropdownButtonFormField<String>(
-                          decoration: const InputDecoration(
-                            labelText: 'Lenguaje de programación (opcional)',
-                            border: OutlineInputBorder(),
-                          ),
-                          value: _selectedLanguage,
-                          items: [
-                            const DropdownMenuItem<String>(
-                              value: null,
-                              child: Text('Sin lenguaje específico'),
+                          children: [
+                            TextFormField(
+                              controller: _titleController,
+                              decoration: InputDecoration(
+                                labelText: 'Título',
+                                hintText: 'Ej: Ejercicio de bucles',
+                                prefixIcon: Icon(Icons.title, color: colors.primary),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(color: colors.outline),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(color: colors.primary, width: 2),
+                                ),
+                              ),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Por favor ingrese un título';
+                                }
+                                return null;
+                              },
                             ),
-                            ..._programmingLanguages.map((String language) {
-                              return DropdownMenuItem<String>(
-                                value: language,
-                                child: Text(language),
-                              );
-                            }).toList(),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _descriptionController,
+                              decoration: InputDecoration(
+                                labelText: 'Descripción',
+                                hintText: 'Describe los objetivos y requisitos de la actividad',
+                                prefixIcon: Icon(Icons.description, color: colors.primary),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(color: colors.outline),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(color: colors.primary, width: 2),
+                                ),
+                              ),
+                              maxLines: 5,
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Por favor ingrese una descripción';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            DropdownButtonFormField<String>(
+                              decoration: InputDecoration(
+                                labelText: 'Lenguaje de programación (opcional)',
+                                prefixIcon: Icon(Icons.code, color: colors.primary),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(color: colors.outline),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(color: colors.primary, width: 2),
+                                ),
+                              ),
+                              value: _selectedLanguage,
+                              items: [
+                                const DropdownMenuItem<String>(
+                                  value: null,
+                                  child: Text('Sin lenguaje específico'),
+                                ),
+                                ..._programmingLanguages.map((String language) {
+                                  return DropdownMenuItem<String>(
+                                    value: language,
+                                    child: Text(language),
+                                  );
+                                }).toList(),
+                              ],
+                              onChanged: (String? value) {
+                                setState(() => _selectedLanguage = value);
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _parametersController,
+                              decoration: InputDecoration(
+                                labelText: 'Parámetros a valorar (opcional)',
+                                hintText: 'Ej: Eficiencia, legibilidad, documentación',
+                                prefixIcon: Icon(Icons.checklist, color: colors.primary),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(color: colors.outline),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(color: colors.primary, width: 2),
+                                ),
+                                helperText: 'Escribe los aspectos específicos a evaluar en la solución del problema',
+                              ),
+                              maxLines: 3,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Fecha y hora de entrega',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: colors.primary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: colors.surfaceVariant.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: colors.outline.withOpacity(0.2),
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  ListTile(
+                                    onTap: () => _selectDate(context),
+                                    leading: Icon(
+                                      Icons.calendar_today,
+                                      color: colors.primary,
+                                    ),
+                                    title: const Text('Fecha de entrega'),
+                                    subtitle: Text(
+                                      '${_dueDate.day}/${_dueDate.month}/${_dueDate.year}',
+                                      style: TextStyle(
+                                        color: colors.primary,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    trailing: Icon(
+                                      Icons.arrow_forward_ios,
+                                      size: 16,
+                                      color: colors.onSurfaceVariant,
+                                    ),
+                                  ),
+                                  Divider(color: colors.outline.withOpacity(0.2)),
+                                  ListTile(
+                                    onTap: () => _selectTime(context),
+                                    leading: Icon(
+                                      Icons.access_time,
+                                      color: colors.primary,
+                                    ),
+                                    title: const Text('Hora de entrega'),
+                                    subtitle: Text(
+                                      _dueTime.format(context),
+                                      style: TextStyle(
+                                        color: colors.primary,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    trailing: Icon(
+                                      Icons.arrow_forward_ios,
+                                      size: 16,
+                                      color: colors.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ],
-                          onChanged: (String? value) {
-                            setState(() => _selectedLanguage = value);
-                          },
                         ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _parametersController,
-                          decoration: const InputDecoration(
-                            labelText: 'Parámetros a valorar (opcional)',
-                            border: OutlineInputBorder(),
-                            helperText: 'Escribe los aspectos específicos a evaluar en la solucion del problema',
-                          ),
-                          maxLines: 3,
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Fecha y hora de entrega',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: Theme.of(context).colorScheme.outline,
-                              width: 1,
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Column(
-                            children: [
-                              InkWell(
-                                onTap: () async {
-                                  final picked = await showDatePicker(
-                                    context: context,
-                                    initialDate: _dueDate,
-                                    firstDate: DateTime.now(),
-                                    lastDate: DateTime.now().add(const Duration(days: 365)),
-                                  );
-                                  if (picked != null) {
-                                    setState(() => _dueDate = DateTime(
-                                      picked.year,
-                                      picked.month,
-                                      picked.day,
-                                      _dueTime.hour,
-                                      _dueTime.minute,
-                                    ));
-                                  }
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.calendar_today,
-                                        color: Theme.of(context).colorScheme.primary,
-                                        size: 24,
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          const Text(
-                                            'Fecha',
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              color: Colors.grey,
-                                            ),
-                                          ),
-                                          Text(
-                                            '${_dueDate.day}/${_dueDate.month}/${_dueDate.year}',
-                                            style: const TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              Divider(
-                                height: 1,
-                                color: Theme.of(context).colorScheme.outline,
-                              ),
-                              InkWell(
-                                onTap: () async {
-                                  final picked = await showTimePicker(
-                                    context: context,
-                                    initialTime: _dueTime,
-                                  );
-                                  if (picked != null) {
-                                    setState(() {
-                                      _dueTime = picked;
-                                      _dueDate = DateTime(
-                                        _dueDate.year,
-                                        _dueDate.month,
-                                        _dueDate.day,
-                                        picked.hour,
-                                        picked.minute,
-                                      );
-                                    });
-                                  }
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.access_time,
-                                        color: Theme.of(context).colorScheme.primary,
-                                        size: 24,
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          const Text(
-                                            'Hora',
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              color: Colors.grey,
-                                            ),
-                                          ),
-                                          Text(
-                                            _dueTime.format(context),
-                                            style: const TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  TextButton(
+                  TextButton.icon(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('Cancelar'),
+                    icon: Icon(
+                      Icons.close,
+                      color: colors.error,
+                    ),
+                    label: Text(
+                      'Cancelar',
+                      style: TextStyle(color: colors.error),
+                    ),
                   ),
-                  const SizedBox(width: 8),
-                  FilledButton(
+                  const SizedBox(width: 12),
+                  FilledButton.icon(
                     onPressed: () {
                       if (_formKey.currentState!.validate()) {
                         final dueDateTime = DateTime(
@@ -282,13 +381,10 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                           _dueTime.minute,
                         );
                         
-                        // Asegurarnos de que la fecha está en UTC y tiene el formato correcto
-                        final utcDueDate = dueDateTime.toUtc();
-                        
                         Navigator.pop(context, {
                           'titulo': _titleController.text,
                           'descripcion': _descriptionController.text,
-                          'fecha_entrega': utcDueDate.toIso8601String(),
+                          'fecha_entrega': dueDateTime.toUtc().toIso8601String(),
                           'lenguaje_programacion': _selectedLanguage,
                           'parametros_evaluacion': _parametersController.text.isEmpty 
                               ? null 
@@ -296,7 +392,8 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                         });
                       }
                     },
-                    child: const Text('Crear'),
+                    icon: const Icon(Icons.check),
+                    label: const Text('Crear'),
                   ),
                 ],
               ),

@@ -214,7 +214,7 @@ class SubmissionService {
       );
 
       if (response.statusCode != 200) {
-        final error = json.decode(response.body);
+        final error = json.decode(utf8.decode(response.bodyBytes));
         throw Exception(error['detail'] ?? 'Error al evaluar la entrega: ${response.statusCode}');
       }
     } catch (e) {
@@ -283,6 +283,26 @@ class SubmissionService {
     } catch (e) {
       debugPrint('Error en SubjectsService.processImageOCR: $e');
       rethrow;
+    }
+  }
+
+  Future<String> getSubmissionImageUrl(int submissionId, String token) async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_baseUrl/entregas/$submissionId/imagen'),
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(utf8.decode(response.bodyBytes));
+        return data['url'];
+      } else {
+        throw Exception('Error al obtener la URL de la imagen: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error de conexión: ${e.toString()}');
     }
   }
 } 

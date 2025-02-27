@@ -10,8 +10,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../providers/profile_provider.dart';
-
-
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 
 class StudentsTab extends StatefulWidget {
   final int subjectId;
@@ -29,11 +28,34 @@ class StudentsTab extends StatefulWidget {
   State<StudentsTab> createState() => _StudentsTabState();
 }
 
-class _StudentsTabState extends State<StudentsTab> {
+class _StudentsTabState extends State<StudentsTab> with SingleTickerProviderStateMixin {
   Future<List<EnrolledStudent>>? _studentsFuture;
   bool _isLoading = false;
   late EnrollmentProvider _enrollmentProvider;
   late String? _token;
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeOut,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -136,6 +158,9 @@ class _StudentsTabState extends State<StudentsTab> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+
     return RefreshIndicator(
       onRefresh: _loadStudents,
       child: FutureBuilder<List<EnrolledStudent>>(
@@ -149,25 +174,37 @@ class _StudentsTabState extends State<StudentsTab> {
 
           if (snapshot.hasError) {
             return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.error_outline,
-                    size: 48,
-                    color: Colors.red,
+              child: AnimatedBuilder(
+                animation: _fadeAnimation,
+                builder: (context, child) => Opacity(
+                  opacity: _fadeAnimation.value,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        size: 64,
+                        color: colors.error,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Error al cargar los estudiantes: ${snapshot.error}',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: colors.error),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: _loadStudents,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Reintentar'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: colors.primary,
+                          foregroundColor: colors.onPrimary,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Error al cargar los estudiantes: ${snapshot.error}',
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: _loadStudents,
-                    child: const Text('Reintentar'),
-                  ),
-                ],
+                ),
               ),
             );
           }
@@ -175,58 +212,138 @@ class _StudentsTabState extends State<StudentsTab> {
           final students = snapshot.data ?? [];
 
           if (students.isEmpty) {
-            return const Center(
-              child: Text('No hay estudiantes matriculados en esta asignatura'),
+            return Center(
+              child: AnimatedBuilder(
+                animation: _fadeAnimation,
+                builder: (context, child) => Opacity(
+                  opacity: _fadeAnimation.value,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.people_outline,
+                        size: 64,
+                        color: colors.primary.withOpacity(0.5),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No hay estudiantes matriculados',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          color: colors.onSurface.withOpacity(0.7),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             );
           }
 
-          return ListView.builder(
-            itemCount: students.length,
-            itemBuilder: (context, index) {
-              final student = students[index];
-              return ListTile(
-                leading: CircleAvatar(
-                  child: Text(student.nombre[0]),
-                ),
-                title: Text(student.nombre),
-                subtitle: Text(student.email),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ChangeNotifierProvider(
-                        create: (_) => ProfileProvider(
-                          profileService: ProfileService(),
+          _controller.forward();
+
+          return AnimationLimiter(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: students.length,
+              itemBuilder: (context, index) {
+                final student = students[index];
+                return AnimationConfiguration.staggeredList(
+                  position: index,
+                  duration: const Duration(milliseconds: 500),
+                  child: SlideAnimation(
+                    verticalOffset: 50.0,
+                    child: FadeInAnimation(
+                      child: Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        elevation: 2,
+                        shadowColor: colors.shadow.withOpacity(0.1),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        child: UserProfileView(
-                          userId: student.id.toString(),
-                          userType: 'alumno',
+                        child: InkWell(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ChangeNotifierProvider(
+                                  create: (_) => ProfileProvider(
+                                    profileService: ProfileService(),
+                                  ),
+                                  child: UserProfileView(
+                                    userId: student.id.toString(),
+                                    userType: 'alumno',
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: colors.primaryContainer,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      student.nombre[0].toUpperCase(),
+                                      style: theme.textTheme.titleLarge?.copyWith(
+                                        color: colors.onPrimaryContainer,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '${student.nombre} ${student.apellidos}',
+                                        style: theme.textTheme.titleMedium?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        student.email,
+                                        style: theme.textTheme.bodyMedium?.copyWith(
+                                          color: colors.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (!widget.showAsStudent) ...[
+                                  IconButton(
+                                    icon: const Icon(Icons.email_outlined),
+                                    color: colors.primary,
+                                    onPressed: () => _sendEmail(student.email),
+                                    tooltip: 'Enviar correo',
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.remove_circle_outline),
+                                    color: colors.error,
+                                    onPressed: () => _handleRemoveStudent(student),
+                                    tooltip: 'Expulsar alumno',
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  );
-                },
-                trailing: widget.showAsStudent
-                    ? null
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.email),
-                            color: Theme.of(context).colorScheme.primary,
-                            onPressed: () => _sendEmail(student.email),
-                            tooltip: 'Enviar correo',
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.remove_circle_outline),
-                            color: Colors.red,
-                            onPressed: () => _handleRemoveStudent(student),
-                            tooltip: 'Expulsar alumno',
-                          ),
-                        ],
-                      ),
-              );
-            },
+                  ),
+                );
+              },
+            ),
           );
         },
       ),

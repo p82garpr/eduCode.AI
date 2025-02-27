@@ -22,7 +22,7 @@ class EnrollmentService {
       );
 
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
+        final List<dynamic> data = json.decode(utf8.decode(response.bodyBytes));
         return data.map((json) => EnrolledStudent.fromJson(json)).toList();
       } else {
         throw Exception('Error al obtener los estudiantes matriculados');
@@ -48,7 +48,7 @@ class EnrollmentService {
       );
 
       if (response.statusCode != 200) {
-        final error = json.decode(response.body);
+        final error = json.decode(utf8.decode(response.bodyBytes));
         throw Exception(error['detail'] ?? 'Error al inscribirse en la asignatura');
       }
     } catch (e) {
@@ -85,7 +85,7 @@ class EnrollmentService {
       );
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+        final data = json.decode(utf8.decode(response.bodyBytes));
         return UserProfileModel.fromJson(data);
       } else {
         throw Exception('Error al obtener el perfil del usuario');

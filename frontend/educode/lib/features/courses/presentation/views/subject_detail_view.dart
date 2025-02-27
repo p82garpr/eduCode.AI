@@ -28,6 +28,7 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import '../providers/profile_provider.dart';
 import 'package:educode/features/courses/presentation/widgets/edit_subject_dialog.dart';
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
   
 class SubjectDetailView extends StatefulWidget {
   final Subject subject;
@@ -336,20 +337,31 @@ class _SubjectDetailViewState extends State<SubjectDetailView> {
         length: isTeacher ? 4 : 4,
         child: Scaffold(
           appBar: AppBar(
-            title: Text(widget.subject.nombre),
+            title: Text(
+              widget.subject.nombre,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            backgroundColor: colors.primary,
+            foregroundColor: colors.onPrimary,
+            elevation: 0,
             actions: [
               if (!isTeacher)
                 IconButton(
                   icon: Icon(
                     Icons.exit_to_app,
-                    color: colors.error,
+                    color: colors.onPrimary,
                   ),
                   onPressed: _cancelEnrollment,
                   tooltip: 'Darme de baja de la asignatura',
                 ),
             ],
             bottom: TabBar(
-              isScrollable: false,
+              labelColor: colors.onPrimary,
+              unselectedLabelColor: colors.onPrimary.withOpacity(0.7),
+              indicatorColor: colors.onPrimary,
+              dividerColor: Colors.transparent,
               tabs: [
                 const Tab(
                   icon: Icon(Icons.info_outline),
@@ -593,34 +605,89 @@ class _SubjectInfoTab extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Descripción',
-                    style: Theme.of(context).textTheme.titleLarge,
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.description_outlined,
+                        color: colors.primary,
+                        size: 28,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Descripción',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: colors.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(subject.descripcion),
                   const SizedBox(height: 16),
+                  Text(
+                    subject.descripcion,
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                  const SizedBox(height: 24),
                   const Divider(),
+                  const SizedBox(height: 16),
                   InkWell(
                     onTap: () => _navigateToTeacherProfile(
                       context, 
                       subject.profesor.id.toString(),
                     ),
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: colors.primary,
-                        child: Text(
-                          subject.profesor.nombre.substring(0, 1).toUpperCase(),
-                        ),
-                      ),
-                      title: const Text('Profesor'),
-                      subtitle: Text(
-                        '${subject.profesor.nombre} ${subject.profesor.apellidos}',
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 24,
+                            backgroundColor: colors.primary,
+                            child: Text(
+                              subject.profesor.nombre.substring(0, 1).toUpperCase(),
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Profesor',
+                                  style: TextStyle(
+                                    color: colors.primary,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${subject.profesor.nombre} ${subject.profesor.apellidos}',
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.chevron_right,
+                            color: colors.primary,
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -629,42 +696,81 @@ class _SubjectInfoTab extends StatelessWidget {
             ),
           ),
           if (isTeacher) ...[
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: () {
-                _editSubject(context);
-              },
-              icon: const Icon(Icons.edit),
-              label: const Text('Editar Asignatura'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: colors.primary,
-                foregroundColor: colors.onPrimary,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                minimumSize: const Size(double.infinity, 50),
+            const SizedBox(height: 24),
+            Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
-            ),
-            const SizedBox(height: 8),
-            ElevatedButton.icon(
-              onPressed: () => _downloadSubjectCsv(context),
-              icon: const Icon(Icons.file_download),
-              label: const Text('Exportar Calificaciones'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: colors.primary,
-                foregroundColor: colors.onPrimary,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                minimumSize: const Size(double.infinity, 50),
-              ),
-            ),
-            const SizedBox(height: 8),
-            ElevatedButton.icon(
-              onPressed: () => _deleteSubject(context),
-              icon: const Icon(Icons.delete_forever),
-              label: const Text('Eliminar Asignatura'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: colors.error,
-                foregroundColor: colors.onError,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                minimumSize: const Size(double.infinity, 50),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.settings_outlined,
+                          color: colors.primary,
+                          size: 28,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Gestión de la asignatura',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: colors.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: () => _editSubject(context),
+                      icon: const Icon(Icons.edit),
+                      label: const Text('Editar Asignatura'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: colors.primary,
+                        foregroundColor: colors.onPrimary,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      onPressed: () => _downloadSubjectCsv(context),
+                      icon: const Icon(Icons.file_download),
+                      label: const Text('Exportar Calificaciones'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: colors.primary,
+                        foregroundColor: colors.onPrimary,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      onPressed: () => _deleteSubject(context),
+                      icon: const Icon(Icons.delete_forever),
+                      label: const Text('Eliminar Asignatura'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: colors.error,
+                        foregroundColor: colors.onError,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -784,83 +890,268 @@ class _ActivitiesTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final userId = context.read<AuthProvider>().currentUser?.id;
+    final token = context.read<AuthProvider>().token;
 
-    return activities.isEmpty
-        ? const Center(child: Text('No hay actividades disponibles'))
-        : ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: activities.length,
-            itemBuilder: (context, index) {
-              final activity = activities[index];
-              return Card(
-                margin: const EdgeInsets.only(bottom: 8),
-                child: ListTile(
-                  title: Text(
-                    activity.titulo,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(activity.descripcion),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Fecha de entrega: ${_formatDate(activity.fechaEntrega)}',
-                        style: TextStyle(
-                          color: _isOverdue(activity.fechaEntrega)
-                              ? colors.error
-                              : colors.primary,
-                        ),
+    if (activities.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.assignment_outlined,
+              size: 64,
+              color: colors.primary.withOpacity(0.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No hay actividades disponibles',
+              style: theme.textTheme.titleLarge?.copyWith(
+                color: colors.onSurface.withOpacity(0.7),
+              ),
+            ),
+            if (isTeacher) ...[
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () {
+                  // TODO: Implementar creación de actividad
+                },
+                icon: const Icon(Icons.add),
+                label: const Text('Crear actividad'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: colors.primary,
+                  foregroundColor: colors.onPrimary,
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    return AnimationLimiter(
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: activities.length,
+        itemBuilder: (context, index) {
+          final activity = activities[index];
+          final isOverdue = _isOverdue(activity.fechaEntrega);
+          
+          return FutureBuilder<bool>(
+            future: !isTeacher && userId != null && token != null
+              ? _checkSubmissionStatus(context, activity.id, int.parse(userId), token)
+              : Future.value(false),
+            builder: (context, submissionSnapshot) {
+              final isSubmitted = submissionSnapshot.data ?? false;
+              final showSuccess = isSubmitted;
+              final showWarning = !isSubmitted && isOverdue && !isTeacher;
+
+              return AnimationConfiguration.staggeredList(
+                position: index,
+                duration: const Duration(milliseconds: 500),
+                child: SlideAnimation(
+                  verticalOffset: 50.0,
+                  child: FadeInAnimation(
+                    child: Card(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      elevation: 2,
+                      shadowColor: colors.shadow.withOpacity(0.1),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                    ],
-                  ),
-                  trailing: isTeacher
-                      ? PopupMenuButton(
-                          itemBuilder: (context) => [
-                            const PopupMenuItem(
-                              value: 'edit',
-                              child: Text('Editar'),
-                            ),
-                            const PopupMenuItem(
-                              value: 'delete',
-                              child: Text('Eliminar'),
-                            ),
-                          ],
-                          onSelected: (value) {
-                            if (value == 'delete') {
-                              onDeleteActivity?.call(activity.id);
-                            } else if (value == 'edit') {
-                              onEditActivity?.call(activity);
-                            }
-                          },
-                        )
-                      : null,
-                  onTap: () {
-                    if (isTeacher) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ActivitySubmissionsView(
-                            activity: activity,
-                            subjectId: subjectId,
+                      child: InkWell(
+                        onTap: () {
+                          if (isTeacher) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ActivitySubmissionsView(
+                                  activity: activity,
+                                  subjectId: subjectId,
+                                ),
+                              ),
+                            );
+                          } else {
+                            Navigator.pushNamed(
+                              context,
+                              '/student-activity-submission',
+                              arguments: {
+                                'activityId': activity.id,
+                                'activityTitle': activity.titulo,
+                              },
+                            );
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      color: showSuccess
+                                        ? colors.primaryContainer
+                                        : showWarning
+                                          ? colors.errorContainer
+                                          : colors.primaryContainer,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      showSuccess
+                                        ? Icons.check_circle_rounded
+                                        : showWarning
+                                          ? Icons.warning_rounded
+                                          : Icons.assignment_rounded,
+                                      color: showSuccess
+                                        ? colors.onPrimaryContainer
+                                        : showWarning
+                                          ? colors.onErrorContainer
+                                          : colors.onPrimaryContainer,
+                                      size: 24,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          activity.titulo,
+                                          style: theme.textTheme.titleLarge?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Fecha de entrega: ${_formatDate(activity.fechaEntrega)}',
+                                          style: theme.textTheme.bodyMedium?.copyWith(
+                                            color: showWarning
+                                              ? colors.error
+                                              : colors.onSurfaceVariant,
+                                          ),
+                                        ),
+                                        if (showSuccess) ...[
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'Entregado',
+                                            style: theme.textTheme.bodyMedium?.copyWith(
+                                              color: colors.primary,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                  if (isTeacher)
+                                    PopupMenuButton(
+                                      icon: Icon(
+                                        Icons.more_vert,
+                                        color: colors.onSurfaceVariant,
+                                      ),
+                                      itemBuilder: (context) => [
+                                        PopupMenuItem(
+                                          value: 'edit',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.edit, 
+                                                color: colors.primary,
+                                                size: 20,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              const Text('Editar'),
+                                            ],
+                                          ),
+                                        ),
+                                        PopupMenuItem(
+                                          value: 'delete',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.delete, 
+                                                color: colors.error,
+                                                size: 20,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              const Text('Eliminar'),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                      onSelected: (value) {
+                                        if (value == 'delete') {
+                                          onDeleteActivity?.call(activity.id);
+                                        } else if (value == 'edit') {
+                                          onEditActivity?.call(activity);
+                                        }
+                                      },
+                                    ),
+                                ],
+                              ),
+                              if (activity.descripcion.isNotEmpty) ...[
+                                const SizedBox(height: 16),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: colors.surfaceVariant.withOpacity(0.3),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    activity.descripcion,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: colors.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              if (activity.lenguajeProgramacion != null) ...[
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.code,
+                                      size: 16,
+                                      color: colors.primary,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      activity.lenguajeProgramacion!,
+                                      style: theme.textTheme.bodyMedium?.copyWith(
+                                        color: colors.primary,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
                           ),
                         ),
-                      );
-                    } else {
-                      Navigator.pushNamed(
-                        context,
-                        '/student-activity-submission',
-                        arguments: {
-                          'activityId': activity.id,
-                          'activityTitle': activity.titulo,
-                        },
-                      );
-                    }
-                  },
+                      ),
+                    ),
+                  ),
                 ),
               );
             },
           );
+        },
+      ),
+    );
+  }
+
+  Future<bool> _checkSubmissionStatus(BuildContext context, int activityId, int userId, String token) async {
+    try {
+      final submissions = await context.read<SubmissionProvider>().getActivitySubmissions(activityId, token);
+      return submissions.any((submission) => submission.alumnoId == userId);
+    } catch (e) {
+      return false;
+    }
   }
 
   String _formatDate(DateTime date) {
