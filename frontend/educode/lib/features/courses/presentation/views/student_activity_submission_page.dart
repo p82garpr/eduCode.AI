@@ -6,10 +6,10 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:educode/features/courses/domain/models/submission_model.dart';
 import 'package:educode/features/courses/domain/models/activity_model.dart';
-import 'package:educode/features/courses/presentation/providers/subjects_provider.dart';
+
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-import 'dart:async' show unawaited;
+
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -28,8 +28,11 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
   ActivityModel? _activity;
   final ImagePicker _picker = ImagePicker();
   File? _imageFile;
+  // ignore: unused_field
   bool _processingImage = false;
+  // ignore: prefer_final_fields, unused_field
   bool _isTextExpanded = true;
+  // ignore: unused_field
   bool _isProcessingOcr = false;
 
   @override
