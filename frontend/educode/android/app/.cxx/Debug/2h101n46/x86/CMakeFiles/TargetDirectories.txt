@@ -1,0 +1,2 @@
+C:/Users/Usuario/Desktop/tfg/codigo/frontend/educode/android/app/.cxx/Debug/2h101n46/x86/CMakeFiles/edit_cache.dir
+C:/Users/Usuario/Desktop/tfg/codigo/frontend/educode/android/app/.cxx/Debug/2h101n46/x86/CMakeFiles/rebuild_cache.dir

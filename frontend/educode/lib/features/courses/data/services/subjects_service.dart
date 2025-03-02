@@ -89,7 +89,7 @@ class SubjectsService {
       );
 
       if (response.statusCode == 200) {
-        return Subject.fromJson(json.decode(response.body));
+        return Subject.fromJson(json.decode(utf8.decode(response.bodyBytes)));
       } else {
         throw Exception('Error al obtener los detalles de la asignatura');
       }
@@ -109,7 +109,7 @@ class SubjectsService {
       );
 
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
+        final List<dynamic> data = json.decode(utf8.decode(response.bodyBytes));
         return data.map((json) => Subject.fromJson(json)).toList();
       } else {
         throw Exception('Error al obtener las asignaturas disponibles');

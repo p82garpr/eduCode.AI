@@ -20,7 +20,7 @@ class ActivityService {
       );
 
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
+        final List<dynamic> data = json.decode(utf8.decode(response.bodyBytes));
         return data.map((json) => ActivityModel.fromJson(json)).toList();
       } else {
         throw Exception('Error al obtener las actividades');

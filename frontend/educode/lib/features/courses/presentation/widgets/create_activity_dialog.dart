@@ -125,6 +125,8 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final size = MediaQuery.of(context).size;
+    final isSmallScreen = size.width < 600;
 
     return Dialog(
       backgroundColor: colors.surface,
@@ -132,10 +134,11 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(28),
       ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(
+      child: Container(
+        width: isSmallScreen ? size.width * 0.9 : 500,
+        constraints: BoxConstraints(
           maxWidth: 500,
-          maxHeight: 700,
+          maxHeight: size.height * 0.8,
         ),
         child: Padding(
           padding: const EdgeInsets.all(24.0),
@@ -151,11 +154,14 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                     size: 32,
                   ),
                   const SizedBox(width: 16),
-                  Text(
-                    'Nueva actividad',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: colors.primary,
+                  Expanded(
+                    child: Text(
+                      'Nueva actividad',
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: colors.primary,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
@@ -163,6 +169,7 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
               const SizedBox(height: 24),
               Expanded(
                 child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
                   child: AnimationLimiter(
                     child: Form(
                       key: _formKey,
@@ -280,9 +287,9 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: BorderSide(color: colors.primary, width: 2),
                                 ),
-                                helperText: 'Escribe los aspectos específicos a evaluar en la solución del problema',
+                                helperText: 'Aspectos a evaluar en la solución',
                               ),
-                              maxLines: 3,
+                              maxLines: isSmallScreen ? 2 : 3,
                             ),
                             const SizedBox(height: 16),
                             Text(
@@ -358,19 +365,15 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  TextButton.icon(
+                  TextButton(
                     onPressed: () => Navigator.pop(context),
-                    icon: Icon(
-                      Icons.close,
-                      color: colors.error,
-                    ),
-                    label: Text(
+                    child: Text(
                       'Cancelar',
                       style: TextStyle(color: colors.error),
                     ),
                   ),
                   const SizedBox(width: 12),
-                  FilledButton.icon(
+                  FilledButton(
                     onPressed: () {
                       if (_formKey.currentState!.validate()) {
                         final dueDateTime = DateTime(
@@ -392,8 +395,7 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                         });
                       }
                     },
-                    icon: const Icon(Icons.check),
-                    label: const Text('Crear'),
+                    child: const Text('Crear'),
                   ),
                 ],
               ),

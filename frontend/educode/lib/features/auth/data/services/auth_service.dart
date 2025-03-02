@@ -4,13 +4,15 @@ import 'package:http/http.dart' as http;
 import '../../domain/models/user_model.dart';
 
 class AuthService {
+  final http.Client _client;
+  final String _baseUrl = AppConfig.apiBaseUrl;
 
+  AuthService({http.Client? client}) : _client = client ?? http.Client();
 
   Future<String> login(String email, String password) async {
     try {
-      final response = await http.post(
-        Uri.parse('${AppConfig.apiBaseUrl}/login'),
-
+      final response = await _client.post(
+        Uri.parse('$_baseUrl/login'),
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
@@ -38,8 +40,8 @@ class AuthService {
   // Método para obtener la información del usuario
   Future<UserModel> getUserInfo(String token) async {
     try {
-      final response = await http.get(
-        Uri.parse('${AppConfig.apiBaseUrl}/me'),
+      final response = await _client.get(
+        Uri.parse('$_baseUrl/me'),
         headers: {
           'Authorization': 'Bearer $token',
         },
@@ -57,8 +59,8 @@ class AuthService {
 
   Future<UserModel> register(String name, String lastName, String email, String password) async {
     try {
-      final response = await http.post(
-        Uri.parse('${AppConfig.apiBaseUrl}/registro'),
+      final response = await _client.post(
+        Uri.parse('$_baseUrl/registro'),
         headers: {
           'Content-Type': 'application/json',
         },
@@ -95,8 +97,8 @@ class AuthService {
     required String token,
   }) async {
     try {
-      final response = await http.put(
-        Uri.parse('${AppConfig.apiBaseUrl}/usuarios/update'),
+      final response = await _client.put(
+        Uri.parse('$_baseUrl/usuarios/update'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',

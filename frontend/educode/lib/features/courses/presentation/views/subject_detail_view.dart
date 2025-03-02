@@ -562,7 +562,8 @@ class _SubjectInfoTab extends StatelessWidget {
           throw Exception('No se encontró el token de autenticación');
         }
 
-        await context.read<SubjectsProvider>().updateSubject(
+        // Actualizar la asignatura
+        final updatedSubject = await context.read<SubjectsProvider>().updateSubject(
           subject.id,
           result,
           token,
@@ -571,9 +572,22 @@ class _SubjectInfoTab extends StatelessWidget {
         if (context.mounted) {
           // Recargar la lista de asignaturas
           await context.read<SubjectsProvider>().loadSubjects(subject.profesor.id.toString(), 'Profesor', token);
-          // Recargar la asignatura actual
-          await context.read<SubjectsProvider>().getSubjectDetail(subject.id, token);
-        
+          
+          // Obtener las actividades actualizadas
+          final updatedActivities = await context.read<SubjectsProvider>().getCourseActivities(updatedSubject.id, token);
+          
+          // Actualizar la vista actual con los nuevos datos
+          if (context.mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => SubjectDetailView(
+                  subject: updatedSubject,
+                  activities: updatedActivities,
+                ),
+              ),
+            );
+          }
 
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
