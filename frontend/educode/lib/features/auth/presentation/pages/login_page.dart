@@ -1,4 +1,5 @@
 import 'package:educode/features/auth/presentation/pages/register_page.dart';
+import 'package:educode/features/auth/presentation/pages/password_reset_page.dart';
 import 'package:educode/features/courses/presentation/pages/home_page.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -138,22 +139,34 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
                         const SizedBox(height: 20),
-                        FadeInDown(
-                          delay: const Duration(milliseconds: 1200),
-                          duration: const Duration(milliseconds: 800),
-                          child: TextButton(
-                            onPressed: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const RegisterPage(),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            TextButton(
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const PasswordResetPage(),
+                                ),
+                              ),
+                              child: Text(
+                                '¿Olvidaste tu contraseña?',
+                                style: TextStyle(color: colors.primary),
                               ),
                             ),
-                            child: Text(
-                              '¿No tienes cuenta? Regístrate',
-                              style: TextStyle(color: colors.primary),
+                            TextButton(
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const RegisterPage(),
+                                ),
+                              ),
+                              child: Text(
+                                'Crear cuenta',
+                                style: TextStyle(color: colors.primary),
+                              ),
                             ),
-                          ),
-
+                          ],
                         ),
                       ],
                     ),

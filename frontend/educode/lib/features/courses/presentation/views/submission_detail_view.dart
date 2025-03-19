@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../../domain/models/activity_model.dart';
 import '../../domain/models/enrolled_student_model.dart';
 import '../../domain/models/submission_model.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../../../core/config/app_config.dart';
 
 //TODO: Añadir la información de la entrega
 class SubmissionDetailView extends StatelessWidget {
@@ -20,9 +23,31 @@ class SubmissionDetailView extends StatelessWidget {
     return '${date.day}/${date.month}/${date.year}';
   }
 
+  Future<void> _downloadImage(BuildContext context) async {
+    if (submission.nombreArchivo == null) return;
+
+    final url = '${AppConfig.apiBaseUrl}/entregas/download/${submission.id}';
+    
+    try {
+      if (!await launchUrl(Uri.parse(url))) {
+        throw 'No se pudo abrir el archivo';
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al descargar el archivo: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     
     return Scaffold(
       appBar: AppBar(
@@ -91,15 +116,65 @@ class SubmissionDetailView extends StatelessWidget {
               const SizedBox(height: 16),
               Text(
                 'Comentarios:',
-
                 style: theme.textTheme.titleMedium,
               ),
               const SizedBox(height: 8),
               Text(submission.comentarios!),
             ],
             
-
-            // como archivos adjuntos, comentarios adicionales, etc.
+            // Añadir sección de archivo adjunto
+            if (submission.nombreArchivo != null) ...[
+              const SizedBox(height: 24),
+              Text(
+                'Archivo adjunto',
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: colors.surfaceVariant,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: colors.outline.withOpacity(0.5)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.image_outlined,
+                          color: colors.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            submission.nombreArchivo!,
+                            style: theme.textTheme.bodyLarge,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _downloadImage(context),
+                        icon: const Icon(Icons.download),
+                        label: const Text('Descargar imagen'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: colors.primary,
+                          foregroundColor: colors.onPrimary,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),

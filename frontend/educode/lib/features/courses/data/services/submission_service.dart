@@ -305,4 +305,24 @@ class SubmissionService {
       throw Exception('Error de conexión: ${e.toString()}');
     }
   }
+
+  Future<Uint8List> downloadSubmissionImage(int submissionId, String token) async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_baseUrl/entregas/download/$submissionId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return response.bodyBytes;
+      } else {
+        throw Exception('Error al obtener la imagen de la entrega');
+      }
+    } catch (e) {
+      throw Exception('Error de conexión: $e');
+    }
+  }
 } 

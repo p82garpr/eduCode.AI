@@ -57,7 +57,7 @@ class AuthService {
     }
   }
 
-  Future<UserModel> register(String name, String lastName, String email, String password) async {
+  Future<UserModel> register(String name, String lastName, String email, String password, String userType) async {
     try {
       final response = await _client.post(
         Uri.parse('$_baseUrl/registro'),
@@ -69,13 +69,12 @@ class AuthService {
           'nombre': name,
           'apellidos': lastName,
           'password': password,
-          'tipo_usuario': 'Alumno', // Por defecto registramos como alumno
+          'tipo_usuario': userType, // Usar el tipo de usuario proporcionado
         }),
       );
     
       //print('Status code: ${response.statusCode}'); // Para debug
       //print('Response body: ${response.body}'); // Para debug
-
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         return UserModel.fromJson(jsonDecode(response.body));
@@ -86,7 +85,6 @@ class AuthService {
       final decodedError = utf8.decode(e.toString().codeUnits);
       throw Exception(': $decodedError');
     }
-
   }
 
   Future<UserModel> updateProfile({

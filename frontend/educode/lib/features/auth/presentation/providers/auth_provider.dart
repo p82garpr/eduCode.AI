@@ -92,7 +92,7 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> register(String email, String password, String name, String lastName) async {
+  Future<bool> register(String email, String password, String name, String lastName, String userType) async {
     try {
       _isLoading = true;
       _error = null;
@@ -100,7 +100,7 @@ class AuthProvider extends ChangeNotifier {
 
       // Registrar al usuario
       // ignore: unused_local_variable, no_leading_underscores_for_local_identifiers
-      final _currentUser = await _authService.register(name, lastName, email, password);
+      final _currentUser = await _authService.register(name, lastName, email, password, userType);
 
       // Si el registro es exitoso, iniciar sesión automáticamente
       final loginSuccess = await login(email, password);

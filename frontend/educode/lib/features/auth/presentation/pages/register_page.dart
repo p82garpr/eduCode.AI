@@ -23,6 +23,7 @@ class _RegisterPageState extends State<RegisterPage> {
   final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  String _userType = 'Alumno'; // Valor por defecto
 
   @override
   Widget build(BuildContext context) {
@@ -124,6 +125,62 @@ class _RegisterPageState extends State<RegisterPage> {
                               }
                               return null;
                             },
+                          ),
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: colors.surface,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: colors.outline.withOpacity(0.5)),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.school_outlined,
+                                  color: colors.outline,
+                                  size: 24,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: _userType,
+                                      icon: Icon(
+                                        Icons.arrow_drop_down,
+                                        color: colors.outline,
+                                      ),
+                                      isExpanded: true,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: colors.onSurface,
+                                      ),
+                                      hint: Text(
+                                        'Tipo de usuario',
+                                        style: TextStyle(
+                                          color: colors.outline,
+                                        ),
+                                      ),
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _userType = value!;
+                                        });
+                                      },
+                                      items: const [
+                                        DropdownMenuItem(
+                                          value: 'Alumno',
+                                          child: Text('Alumno'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'Profesor',
+                                          child: Text('Profesor'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                           const SizedBox(height: 24),
                           Text(
@@ -286,6 +343,7 @@ class _RegisterPageState extends State<RegisterPage> {
           _passwordController.text,
           _nameController.text,
           _lastNameController.text,
+          _userType,
         );
 
         if (!mounted) return;

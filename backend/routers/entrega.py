@@ -988,23 +988,23 @@ async def evaluar_texto_gemini(
             prompt = f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo,pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: {actividad.descripcion}. La solución es: {solucion}. Al final, quiero que me des la nota de la entrega en formato: Nota: n/10. Si no tiene nada que ver con la actividad, escribe que no tiene nada que ver con la actividad y pon de nota 0. La solución debe estar en {lenguaje} y los criterios que tendras en cuenta para evaluar la solución son: {parametros}"
             
             response = model.generate_content(prompt)
-            
-            entrega.comentarios = response.text
-            
-            # Extraer la nota del texto y convertirla a float
-            try:
-                nota_texto = response.text.split("Nota: ")[1].split("/")[0]
-                entrega.calificacion = float(nota_texto)  # Convertir a float
-            except (IndexError, ValueError):
-                # Si no se puede extraer la nota, establecer un valor por defecto
-                entrega.calificacion = 0.0
-            
-            await db.commit()
-            await db.refresh(entrega)
-            return entrega
-        except Exception as e:
-            print(f"Error detallado: {str(e)}")  # Para debugging
-            raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
+        
+        entrega.comentarios = response.text
+        
+        # Extraer la nota del texto y convertirla a float
+        try:
+            nota_texto = response.text.split("Nota: ")[1].split("/")[0]
+            entrega.calificacion = float(nota_texto)  # Convertir a float
+        except (IndexError, ValueError):
+            # Si no se puede extraer la nota, establecer un valor por defecto
+            entrega.calificacion = 0.0
+        
+        await db.commit()
+        await db.refresh(entrega)
+        return entrega
+    except Exception as e:
+        print(f"Error detallado: {str(e)}")  # Para debugging
+        raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
     elif lenguaje != None and parametros == None:
         try:
             # Configurar la API de Gemini
@@ -1251,7 +1251,7 @@ async def evaluar_entrega(
             detail="No tienes permiso para evaluar entregas"
         )
     
-     #obtener la entrega
+    #obtener la entrega
     query = select(Entrega).where(Entrega.id == entrega_id and Entrega.alumno_id == current_user.id)
     result = await db.execute(query)
     entrega = result.scalar_one_or_none()
@@ -1268,7 +1268,7 @@ async def evaluar_entrega(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No has subido ningún archivo"
         )
-        
+
     #obtener el texto de la imagen
     texto = await obtener_ocr_entrega(entrega_id, db, current_user)
 
@@ -1825,3 +1825,70 @@ def verificar_tipo_imagen(contenido: bytes) -> bool:
         if contenido.startswith(signature):
             return True
     return False
+
+@router.get("/download/{entrega_id}")
+async def descargar_imagen_entrega(
+    entrega_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    """
+    Descarga la imagen de una entrega específica.
+    Solo el profesor de la asignatura o el alumno que hizo la entrega pueden descargar la imagen.
+
+    Parameters:
+    - entrega_id (int): ID de la entrega
+
+    Returns:
+    - Response: Imagen con headers para descarga
+
+    Raises:
+    - HTTPException(404): Si la entrega no existe o no tiene imagen
+    - HTTPException(403): Si el usuario no tiene permisos
+    """
+    # Obtener la entrega con sus relaciones
+    query = (
+        select(Entrega)
+        .options(
+            selectinload(Entrega.actividad)
+            .selectinload(Actividad.asignatura)
+        )
+        .where(Entrega.id == entrega_id)
+    )
+    result = await db.execute(query)
+    entrega = result.scalar_one_or_none()
+    
+    if not entrega:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entrega no encontrada"
+        )
+    
+    if not entrega.imagen:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="La entrega no tiene imagen"
+        )
+    
+    # Verificar permisos
+    if current_user.tipo_usuario == TipoUsuario.ALUMNO and entrega.alumno_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para descargar esta imagen"
+        )
+    elif current_user.tipo_usuario == TipoUsuario.PROFESOR and entrega.actividad.asignatura.profesor_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para descargar esta imagen"
+        )
+    
+    # Determinar el tipo de contenido
+    content_type = entrega.tipo_imagen if entrega.tipo_imagen else "application/octet-stream"
+    
+    return Response(
+        content=entrega.imagen,
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{entrega.nombre_archivo or "imagen"}"'
+        }
+    )

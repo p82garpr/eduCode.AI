@@ -10,6 +10,10 @@ import 'package:educode/features/courses/presentation/providers/subjects_provide
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:async' show unawaited;
+import 'package:url_launcher/url_launcher.dart';
+import '../../../../core/config/app_config.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
 
 
 class StudentActivitySubmissionPage extends StatefulWidget {
@@ -291,6 +295,37 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
     } finally {
       if (mounted) {
         setState(() => _isProcessingOcr = false);
+      }
+    }
+  }
+
+  Future<void> _downloadImage() async {
+    if (_existingSubmission?.nombreArchivo == null) return;
+
+    try {
+      final token = context.read<AuthProvider>().token;
+      if (token == null) return;
+
+      // Descargar los bytes de la imagen
+      final bytes = await context.read<SubmissionProvider>()
+          .submissionService
+          .downloadSubmissionImage(_existingSubmission!.id, token);
+      
+      // Compartir el archivo usando share_plus
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/${_existingSubmission!.nombreArchivo}');
+      await file.writeAsBytes(bytes);
+      
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: 'Imagen de la entrega',
+      );
+
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al descargar la imagen: $e')),
+        );
       }
     }
   }
@@ -713,6 +748,55 @@ class _StudentActivitySubmissionPageState extends State<StudentActivitySubmissio
                                       maxLines: 10,
                                       readOnly: true,
                                     ),
+                                    if (_existingSubmission?.nombreArchivo != null) ...[
+                                      const SizedBox(height: 20),
+                                      Container(
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          color: theme.colorScheme.surfaceVariant,
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: theme.colorScheme.outline.withOpacity(0.5),
+                                          ),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.image_outlined,
+                                                  color: theme.colorScheme.primary,
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    _existingSubmission!.nombreArchivo!,
+                                                    style: theme.textTheme.bodyLarge,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 12),
+                                            SizedBox(
+                                              width: double.infinity,
+                                              child: ElevatedButton.icon(
+                                                onPressed: _downloadImage,
+                                                icon: const Icon(Icons.download),
+                                                label: const Text('Descargar imagen'),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: theme.colorScheme.primary,
+                                                  foregroundColor: theme.colorScheme.onPrimary,
+                                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                     if (_existingSubmission?.calificacion == null) ...[
                                       const SizedBox(height: 16),
                                       SizedBox(

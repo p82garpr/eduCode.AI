@@ -3,6 +3,13 @@ import '../../domain/models/submission_model.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'dart:ui';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'package:http/http.dart' as http;
+import '../../../../core/config/app_config.dart';
+import 'package:provider/provider.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 class SubmissionDetailDialog extends StatelessWidget {
   final Submission submission;
@@ -39,6 +46,50 @@ class SubmissionDetailDialog extends StatelessWidget {
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
       barrierColor: Colors.black54,
     );
+  }
+
+  Future<void> _downloadImage(BuildContext context) async {
+    try {
+      final token = context.read<AuthProvider>().token;
+      if (token == null) {
+        throw Exception('No se encontró el token de autenticación');
+      }
+
+      // Construir la URL para descargar la imagen
+      final url = '${AppConfig.apiBaseUrl}/entregas/imagen/${submission.id}';
+
+      // Realizar la petición HTTP con el token
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        // Obtener el directorio temporal
+        final tempDir = await getTemporaryDirectory();
+        final file = File('${tempDir.path}/${submission.nombreArchivo ?? "imagen.jpg"}');
+        
+        // Guardar la imagen
+        await file.writeAsBytes(response.bodyBytes);
+
+        // Compartir el archivo
+        await Share.shareXFiles(
+          [XFile(file.path)],
+          subject: 'Imagen de la entrega',
+        );
+      } else {
+        throw Exception('Error al descargar la imagen: ${response.statusCode}');
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al descargar la imagen: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -250,49 +301,63 @@ class SubmissionDetailDialog extends StatelessWidget {
                                 color: colors.outline.withOpacity(0.2),
                               ),
                             ),
-                            child: Row(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: colors.primary.withOpacity(0.2),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Icon(
-                                    Icons.image_outlined,
-                                    color: colors.primary,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        submission.nombreArchivo!,
-                                        style: theme.textTheme.titleSmall?.copyWith(
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: colors.primary.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(12),
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Imagen adjunta',
-                                        style: TextStyle(
-                                          color: colors.onSurfaceVariant,
-                                        ),
+                                      child: Icon(
+                                        Icons.image_outlined,
+                                        color: colors.primary,
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            submission.nombreArchivo!,
+                                            style: theme.textTheme.titleSmall?.copyWith(
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'Imagen adjunta',
+                                            style: TextStyle(
+                                              color: colors.onSurfaceVariant,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.download_outlined,
-                                    color: colors.primary,
+                                const SizedBox(height: 16),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    onPressed: () => _downloadImage(context),
+                                    icon: const Icon(Icons.download),
+                                    label: const Text('Descargar imagen'),
+                                    style: ElevatedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      backgroundColor: colors.primary,
+                                      foregroundColor: colors.onPrimary,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
                                   ),
-                                  onPressed: () => _downloadFile(submission.nombreArchivo!, context),
-                                  tooltip: 'Descargar imagen',
                                 ),
                               ],
                             ),
@@ -359,35 +424,18 @@ class SubmissionDetailDialog extends StatelessWidget {
     return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
   }
 
-  Future<void> _downloadFile(String url, BuildContext context) async {
-    try {
-      final uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-      } else {
-        throw 'No se pudo abrir el archivo';
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al abrir el archivo: $e'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
-      }
-      debugPrint('Error al abrir el archivo: $e');
-    }
-  }
-
   Color _getGradeColor(ColorScheme colors, double? grade) {
-    if (grade == null) return colors.tertiary;
-    if (grade >= 5) return colors.primary;
-    return colors.error;
+    if (grade == null) return colors.outline;
+    if (grade >= 9) return Colors.green;
+    if (grade >= 7) return Colors.blue;
+    if (grade >= 5) return Colors.orange;
+    return Colors.red;
   }
 
   IconData _getGradeIcon(double? grade) {
     if (grade == null) return Icons.pending;
+    if (grade >= 9) return Icons.star;
+    if (grade >= 7) return Icons.thumb_up;
     if (grade >= 5) return Icons.check_circle;
     return Icons.cancel;
   }

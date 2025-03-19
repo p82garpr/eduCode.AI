@@ -15,6 +15,7 @@ class SubmissionProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   Submission? get currentSubmission => _currentSubmission;
+  SubmissionService get submissionService => _submissionService;
 
   Future<List<Submission>> getActivitySubmissions(int activityId, String token) async {
     try {

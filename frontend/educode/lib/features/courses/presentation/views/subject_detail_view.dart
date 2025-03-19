@@ -925,20 +925,6 @@ class _ActivitiesTab extends StatelessWidget {
                 color: colors.onSurface.withOpacity(0.7),
               ),
             ),
-            if (isTeacher) ...[
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: () {
-                  // TODO: Implementar creación de actividad
-                },
-                icon: const Icon(Icons.add),
-                label: const Text('Crear actividad'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: colors.primary,
-                  foregroundColor: colors.onPrimary,
-                ),
-              ),
-            ],
           ],
         ),
       );
