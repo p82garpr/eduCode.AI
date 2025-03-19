@@ -119,4 +119,76 @@ class AuthService {
       throw Exception('Error al actualizar el perfil: ${e.toString()}');
     }
   }
+  
+  // Solicitar restablecimiento de contraseña
+  Future<String> requestPasswordReset(String email) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_baseUrl/password-reset-request'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'email': email,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        return responseData['message'];
+      } else {
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['detail'] ?? 'Error al solicitar restablecimiento');
+      }
+    } catch (e) {
+      throw Exception('Error al solicitar restablecimiento: ${e.toString()}');
+    }
+  }
+  
+  // Verificar token de restablecimiento
+  Future<Map<String, dynamic>> verifyResetToken(String token) async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_baseUrl/verify-reset-token/$token'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['detail'] ?? 'Token inválido o expirado');
+      }
+    } catch (e) {
+      throw Exception('Error al verificar token: ${e.toString()}');
+    }
+  }
+  
+  // Restablecer contraseña
+  Future<String> resetPassword(String token, String newPassword) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_baseUrl/reset-password'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'token': token,
+          'new_password': newPassword,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        return responseData['message'];
+      } else {
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['detail'] ?? 'Error al restablecer contraseña');
+      }
+    } catch (e) {
+      throw Exception('Error al restablecer contraseña: ${e.toString()}');
+    }
+  }
 }

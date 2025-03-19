@@ -24,3 +24,10 @@ class Token(BaseModel):
     
 class TokenData(BaseModel):
     email: str | None = None
+    
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+    
+class PasswordReset(BaseModel):
+    token: str
+    new_password: str = Field(..., min_length=5, description="La nueva contraseña debe tener al menos 5 caracteres")

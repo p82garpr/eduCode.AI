@@ -56,3 +56,13 @@ CREATE TABLE entregas (
     FOREIGN KEY (actividad_id) REFERENCES actividades (id) ON DELETE CASCADE,
     FOREIGN KEY (alumno_id) REFERENCES usuarios (id) ON DELETE CASCADE
 );
+
+-- Crear tabla para tokens de restablecimiento de contraseña
+CREATE TABLE password_reset_tokens (
+    id SERIAL PRIMARY KEY,
+    token VARCHAR(255) UNIQUE NOT NULL,
+    usuario_id INT NOT NULL,
+    expira TIMESTAMP WITH TIME ZONE NOT NULL,
+    utilizado TIMESTAMP WITH TIME ZONE,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios (id) ON DELETE CASCADE
+);

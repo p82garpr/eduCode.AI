@@ -45,5 +45,19 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Configuración para URL Schemes -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>ai.educode</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>educode</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

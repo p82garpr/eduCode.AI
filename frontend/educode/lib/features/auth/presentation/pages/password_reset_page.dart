@@ -3,11 +3,12 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/custom_text_field.dart';
 import '../../../../core/config/app_config.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import '../../data/services/auth_service.dart';
 
 class PasswordResetPage extends StatefulWidget {
-  const PasswordResetPage({super.key});
+  final String? initialToken;
+  
+  const PasswordResetPage({this.initialToken, super.key});
 
   @override
   State<PasswordResetPage> createState() => _PasswordResetPageState();
@@ -16,16 +17,30 @@ class PasswordResetPage extends StatefulWidget {
 class _PasswordResetPageState extends State<PasswordResetPage> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
-  final _codeController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _authService = AuthService();
 
   bool _isLoading = false;
-  bool _codeSent = false;
-  bool _codeVerified = false;
+  bool _emailSent = false;
+  String? _token;
   String? _error;
+  String? _email;
 
-  Future<void> _requestCode() async {
+  // Si el token está en la URL (web), extraerlo al inicio
+  @override
+  void initState() {
+    super.initState();
+    // Si hay un token inicial, configurar el estado
+    if (widget.initialToken != null && widget.initialToken!.isNotEmpty) {
+      setState(() {
+        _token = widget.initialToken;
+        _emailSent = true; // Fingimos que el email ya fue enviado
+      });
+    }
+  }
+
+  Future<void> _requestPasswordReset() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -34,26 +49,18 @@ class _PasswordResetPageState extends State<PasswordResetPage> {
     });
 
     try {
-      final response = await http.post(
-        Uri.parse('${AppConfig.apiBaseUrl}/auth/reset-password/request'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': _emailController.text}),
-      );
-
+      final message = await _authService.requestPasswordReset(_emailController.text);
+      
       if (!mounted) return;
 
-      if (response.statusCode == 200) {
-        setState(() {
-          _codeSent = true;
-          _error = null;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Código enviado a tu email')),
-        );
-      } else {
-        final error = jsonDecode(response.body);
-        setState(() => _error = error['detail'] ?? 'Error al enviar el código');
-      }
+      setState(() {
+        _emailSent = true;
+        _email = _emailController.text;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -63,48 +70,7 @@ class _PasswordResetPageState extends State<PasswordResetPage> {
     }
   }
 
-  Future<void> _verifyCode() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    try {
-      final response = await http.post(
-        Uri.parse('${AppConfig.apiBaseUrl}/auth/reset-password/verify'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': _emailController.text,
-          'code': _codeController.text,
-        }),
-      );
-
-      if (!mounted) return;
-
-      if (response.statusCode == 200) {
-        setState(() {
-          _codeVerified = true;
-          _error = null;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Código verificado correctamente')),
-        );
-      } else {
-        final error = jsonDecode(response.body);
-        setState(() => _error = error['detail'] ?? 'Código inválido');
-      }
-    } catch (e) {
-      setState(() => _error = e.toString());
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  Future<void> _resetPassword() async {
+  Future<void> _verifyTokenAndReset() async {
     if (!_formKey.currentState!.validate()) return;
 
     if (_passwordController.text != _confirmPasswordController.text) {
@@ -118,26 +84,24 @@ class _PasswordResetPageState extends State<PasswordResetPage> {
     });
 
     try {
-      final response = await http.post(
-        Uri.parse('${AppConfig.apiBaseUrl}/auth/reset-password/reset'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': _emailController.text,
-          'code': _codeController.text,
-          'new_password': _passwordController.text,
-        }),
-      );
-
-      if (!mounted) return;
-
-      if (response.statusCode == 200) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Contraseña actualizada correctamente')),
+      // Verificamos primero que el token sea válido
+      if (_token != null && _token!.isNotEmpty) {
+        await _authService.verifyResetToken(_token!);
+        
+        // Si es válido, procedemos a cambiar la contraseña
+        final message = await _authService.resetPassword(
+          _token!,
+          _passwordController.text,
         );
-        Navigator.pop(context); // Volver a la página de login
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
+        Navigator.pop(context); // Volver a login
       } else {
-        final error = jsonDecode(response.body);
-        setState(() => _error = error['detail'] ?? 'Error al restablecer la contraseña');
+        setState(() => _error = 'Por favor, introduce un token válido');
       }
     } catch (e) {
       setState(() => _error = e.toString());
@@ -178,6 +142,30 @@ class _PasswordResetPageState extends State<PasswordResetPage> {
                   ),
                   const SizedBox(height: 32),
 
+                  // Título explicativo según la etapa
+                  Text(
+                    _emailSent && _token == null
+                        ? 'Correo enviado'
+                        : _token != null
+                            ? 'Establece tu nueva contraseña'
+                            : 'Recupera tu contraseña',
+                    style: theme.textTheme.headlineSmall,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Instrucciones según la etapa
+                  Text(
+                    _emailSent && _token == null
+                        ? 'Te hemos enviado un correo con instrucciones para restablecer tu contraseña. Por favor, haz clic en el enlace del correo.'
+                        : _token != null
+                            ? 'Introduce tu nueva contraseña'
+                            : 'Introduce tu correo electrónico y te enviaremos instrucciones para restablecer tu contraseña.',
+                    style: theme.textTheme.bodyMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 32),
+
                   // Mensaje de error
                   if (_error != null) ...[
                     Container(
@@ -195,27 +183,26 @@ class _PasswordResetPageState extends State<PasswordResetPage> {
                     const SizedBox(height: 24),
                   ],
 
-                  // Email
-                  CustomTextField(
-                    controller: _emailController,
-                    label: 'Email',
-                    prefixIcon: Icons.email,
-                    keyboardType: TextInputType.emailAddress,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Por favor, introduce tu email';
-                      }
-                      if (!value.contains('@')) {
-                        return 'Por favor, introduce un email válido';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 24),
-
-                  if (!_codeSent)
+                  // Primera etapa: Solicitar restablecimiento
+                  if (!_emailSent) ...[
+                    CustomTextField(
+                      controller: _emailController,
+                      label: 'Email',
+                      prefixIcon: Icons.email,
+                      keyboardType: TextInputType.emailAddress,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Por favor, introduce tu email';
+                        }
+                        if (!value.contains('@')) {
+                          return 'Por favor, introduce un email válido';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 24),
                     FilledButton.icon(
-                      onPressed: _isLoading ? null : _requestCode,
+                      onPressed: _isLoading ? null : _requestPasswordReset,
                       icon: _isLoading
                           ? const SizedBox(
                               width: 20,
@@ -226,36 +213,77 @@ class _PasswordResetPageState extends State<PasswordResetPage> {
                               ),
                             )
                           : const Icon(Icons.send),
-                      label: Text(_isLoading ? 'Enviando...' : 'Enviar código'),
-                    )
-                  else if (!_codeVerified) ...[
-                    CustomTextField(
-                      controller: _codeController,
-                      label: 'Código de verificación',
-                      prefixIcon: Icons.key,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Por favor, introduce el código';
-                        }
-                        return null;
+                      label: Text(_isLoading ? 'Enviando...' : 'Enviar instrucciones'),
+                    ),
+                  ]
+                  // Segunda etapa: Email enviado, esperar a que use el link
+                  else if (_token == null) ...[
+                    Text(
+                      'Si no recibes el correo en unos minutos, revisa tu carpeta de spam o intenta de nuevo.',
+                      style: theme.textTheme.bodyMedium,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 32),
+                    Text(
+                      'Si tienes un código de recuperación, puedes ingresarlo directamente:',
+                      style: theme.textTheme.bodyMedium,
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.visible,
+                    ),
+                    const SizedBox(height: 16),
+                    // Campo para ingresar token manualmente (para pruebas o si el enlace no funciona)
+                    TextField(
+                      decoration: InputDecoration(
+                        labelText: 'Código de recuperación',
+                        hintText: 'Ingresa el código que recibiste en tu correo',
+                        prefixIcon: const Icon(Icons.key),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey.shade100,
+                      ),
+                      onChanged: (value) {
+                        setState(() => _token = value);
                       },
                     ),
                     const SizedBox(height: 24),
-                    FilledButton.icon(
-                      onPressed: _isLoading ? null : _verifyCode,
-                      icon: _isLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.check),
-                      label: Text(_isLoading ? 'Verificando...' : 'Verificar código'),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _emailSent = false;
+                                _token = null;
+                              });
+                            },
+                            icon: const Icon(Icons.arrow_back),
+                            label: const Text('Volver'),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _token != null && _token!.isNotEmpty
+                                ? () {
+                                    // Avanzar a la siguiente etapa
+                                    setState(() {});
+                                  }
+                                : null,
+                            icon: const Icon(Icons.check),
+                            label: const Text('Continuar'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: colors.primary,
+                              foregroundColor: colors.onPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ] else ...[
+                  ]
+                  // Tercera etapa: Ingresar nueva contraseña
+                  else ...[
                     CustomTextField(
                       controller: _passwordController,
                       label: 'Nueva contraseña',
@@ -263,7 +291,7 @@ class _PasswordResetPageState extends State<PasswordResetPage> {
                       obscureText: true,
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Por favor, introduce una contraseña';
+                          return 'Por favor, introduce tu nueva contraseña';
                         }
                         if (value.length < 6) {
                           return 'La contraseña debe tener al menos 6 caracteres';
@@ -271,7 +299,7 @@ class _PasswordResetPageState extends State<PasswordResetPage> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
                     CustomTextField(
                       controller: _confirmPasswordController,
                       label: 'Confirmar contraseña',
@@ -289,7 +317,7 @@ class _PasswordResetPageState extends State<PasswordResetPage> {
                     ),
                     const SizedBox(height: 24),
                     FilledButton.icon(
-                      onPressed: _isLoading ? null : _resetPassword,
+                      onPressed: _isLoading ? null : _verifyTokenAndReset,
                       icon: _isLoading
                           ? const SizedBox(
                               width: 20,
@@ -299,20 +327,19 @@ class _PasswordResetPageState extends State<PasswordResetPage> {
                                 color: Colors.white,
                               ),
                             )
-                          : const Icon(Icons.save),
-                      label: Text(
-                        _isLoading ? 'Guardando...' : 'Guardar nueva contraseña',
-                      ),
+                          : const Icon(Icons.check),
+                      label: Text(_isLoading ? 'Procesando...' : 'Cambiar contraseña'),
                     ),
                   ],
-
-                  const SizedBox(height: 24),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Enlace para volver al login
                   TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: Text(
-                      'Volver al inicio de sesión',
-                      style: TextStyle(color: colors.primary),
-                    ),
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
+                    child: const Text('Volver al inicio de sesión'),
                   ),
                 ],
               ),
@@ -322,11 +349,10 @@ class _PasswordResetPageState extends State<PasswordResetPage> {
       ),
     );
   }
-
+  
   @override
   void dispose() {
     _emailController.dispose();
-    _codeController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
