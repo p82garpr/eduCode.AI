@@ -19,7 +19,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 import io
 import csv
-from google import genai
+import google.generativeai as genai
 import os
 import mimetypes
 
