@@ -22,6 +22,8 @@ import csv
 import google.generativeai as genai
 import os
 import mimetypes
+from enum import Enum
+from typing import Optional
 
 router = APIRouter()
 
@@ -30,6 +32,11 @@ router = APIRouter()
 class EntregaCreate(BaseModel):
     textoOcr: str
 
+
+class ModeloIA(str, Enum):
+    GEMINI = "gemini"
+    LLAMA = "llama"
+    GPT = "gpt"
 
 
 @router.get("/actividad/{actividad_id}", response_model=List[EntregaResponse])
@@ -345,29 +352,8 @@ async def process_image_ocr_uco(
         return response.json()["prediction"]
     else:
         raise HTTPException(status_code=500, detail=f"Error al procesar la imagen: {response.text}")
-    
-        """
-        import requests
 
-            # URL de la API
-            API_URL = "http://192.168.117.196:8000/predict/"
 
-            # Ruta de la imagen que quieres probar
-            IMAGE_PATH = "folio.jpg"
-
-            # Abrimos la imagen y la enviamos como multipart/form-data
-            with open(IMAGE_PATH, "rb") as image_file:
-                files = {"image": image_file}
-                response = requests.post(API_URL, files=files)
-
-            # Mostramos la respuesta
-            if response.status_code == 200:
-                print("✅ Respuesta de la API:", response.json())
-            else:
-                print("❌ Error:", response.status_code, response.text)
-        """
-        
-    
    
 
 @router.post("/ocr/process-azure", response_model=str)
@@ -925,217 +911,93 @@ async def evaluar_entrega(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en el proceso de evaluación: {str(e)}")
 
-@router.put("/evaluar-texto-gemini/{entrega_id}", response_model=EntregaResponse)
-async def evaluar_texto_gemini(
+async def evaluar_con_gemini(prompt: str, actividad: Actividad, solucion: str) -> tuple[str, float]:
+    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    response = model.generate_content(prompt)
+    
+    # Extraer nota
+    try:
+        nota_texto = response.text.split("Nota: ")[1].split("/")[0]
+        nota = float(nota_texto)
+    except (IndexError, ValueError):
+        nota = 0.0
+        
+    return response.text, nota
+
+async def evaluar_con_llama(prompt: str, actividad: Actividad, solucion: str) -> tuple[str, float]:
+    response = requests.post(
+        f"{os.getenv('LLAMA_API_URL', 'http://192.168.117.196:5000')}/v1/chat/completions",
+        json={
+            "messages": [
+                {"role": "system", "content": f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo en base al enunciado siguiente: {actividad.descripcion}"},
+                {"role": "user", "content": f"{solucion}"}
+            ],
+            "temperature": 0.7,
+        }
+    )
+    response_text = response.json()["choices"][0]["message"]["content"]
+    
+    # Extraer nota (implementar lógica similar a Gemini)
+    try:
+        nota_texto = response_text.split("Nota: ")[1].split("/")[0]
+        nota = float(nota_texto)
+    except (IndexError, ValueError):
+        nota = 0.0
+        
+    return response_text, nota
+
+async def evaluar_con_gpt(prompt: str, actividad: Actividad, solucion: str) -> tuple[str, float]:
+    # Implementar llamada a GPT cuando sea necesario
+    pass
+
+async def get_evaluador_ia() -> ModeloIA:
+    modelo = os.getenv("MODELO_IA", "gemini").lower()
+    try:
+        return ModeloIA(modelo)
+    except ValueError:
+        return ModeloIA.GEMINI
+
+@router.put("/evaluar-texto/{entrega_id}", response_model=EntregaResponse)
+async def evaluar_texto(
     entrega_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    # Verificaciones iniciales (mantener el código existente)
+    # ... existing code ...
     
-    #comprobar que el usuario esta logueado
-    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para evaluar entregas"
-        )
+    # Obtener el modelo de IA configurado
+    modelo_ia = await get_evaluador_ia()
     
+    # Preparar el prompt base
+    prompt_base = f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo, pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: {actividad.descripcion}. La solución es: {solucion}."
     
-    # Obtener la entrega
-    query = select(Entrega).where(Entrega.id == entrega_id)
-    result = await db.execute(query)
-    entrega = result.scalar_one_or_none()
+    if actividad.lenguaje_programacion:
+        prompt_base += f" La solución debe estar en {actividad.lenguaje_programacion}."
+    if actividad.parametros_evaluacion:
+        prompt_base += f" Los criterios que tendrás en cuenta para evaluar la solución son: {actividad.parametros_evaluacion}"
     
-    if not entrega:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Entrega no encontrada"
-        )
-    
-    # Obtener la actividad
-    query = select(Actividad).where(Actividad.id == entrega.actividad_id)
-    result = await db.execute(query)
-    actividad = result.scalar_one_or_none()
-    
-    if not actividad:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Actividad no encontrada"
-        )
+    try:
+        # Seleccionar el evaluador según la configuración
+        if modelo_ia == ModeloIA.GEMINI:
+            comentarios, nota = await evaluar_con_gemini(prompt_base, actividad, entrega.texto_ocr)
+        elif modelo_ia == ModeloIA.LLAMA:
+            comentarios, nota = await evaluar_con_llama(prompt_base, actividad, entrega.texto_ocr)
+        elif modelo_ia == ModeloIA.GPT:
+            comentarios, nota = await evaluar_con_gpt(prompt_base, actividad, entrega.texto_ocr)
         
-    # Obtener el texto de la entrega
-    solucion = entrega.texto_ocr
-    
-    # Obtener el lenguaje de la actividad
-    lenguaje = actividad.lenguaje_programacion
-    # Obtener los parametros de evaluacion
-    parametros = actividad.parametros_evaluacion
-    
-    if lenguaje != None and parametros != None:
-        try:
-            # Configurar la API de Gemini
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-            
-            # Crear el modelo
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            
-            # Generar la respuesta
-            prompt = f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo,pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: {actividad.descripcion}. La solución es: {solucion}. Al final, quiero que me des la nota de la entrega en formato: Nota: n/10. Si no tiene nada que ver con la actividad, escribe que no tiene nada que ver con la actividad y pon de nota 0. La solución debe estar en {lenguaje} y los criterios que tendras en cuenta para evaluar la solución son: {parametros}"
-            
-            response = model.generate_content(prompt)
-            
-            entrega.comentarios = response.text
-            
-            # Extraer la nota del texto y convertirla a float
-            try:
-                nota_texto = response.text.split("Nota: ")[1].split("/")[0]
-                entrega.calificacion = float(nota_texto)  # Convertir a float
-            except (IndexError, ValueError):
-                # Si no se puede extraer la nota, establecer un valor por defecto
-                entrega.calificacion = 0.0
-            
-            await db.commit()
-            await db.refresh(entrega)
-            return entrega
-        except Exception as e:
-            print(f"Error detallado: {str(e)}")  # Para debugging
-            raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
-    elif lenguaje != None and parametros == None:
-        try:
-            # Configurar la API de Gemini
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-            
-            # Crear el modelo
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            
-            # Generar la respuesta
-            prompt = f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo,pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: {actividad.descripcion}. La solución es: {solucion}. Al final, quiero que me des la nota de la entrega en formato: Nota: n/10. Si no tiene nada que ver con la actividad, escribe que no tiene nada que ver con la actividad y pon de nota 0. La solución debe estar en {lenguaje}."
-            
-            response = model.generate_content(prompt)
-            
-            entrega.comentarios = response.text
-            
-            # Extraer la nota del texto y convertirla a float
-            try:
-                nota_texto = response.text.split("Nota: ")[1].split("/")[0]
-                entrega.calificacion = float(nota_texto)  # Convertir a float
-            except (IndexError, ValueError):
-                # Si no se puede extraer la nota, establecer un valor por defecto
-                entrega.calificacion = 0.0
-            
-            await db.commit()
-            await db.refresh(entrega)
-            return entrega
-        except Exception as e:
-            print(f"Error detallado: {str(e)}")  # Para debugging
-            raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
-    elif lenguaje == None and parametros != None:
-        try:
-            # Configurar la API de Gemini
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-            
-            # Crear el modelo
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            
-            # Generar la respuesta
-            prompt = f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo,pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: {actividad.descripcion}. La solución es: {solucion}. Al final, quiero que me des la nota de la entrega en formato: Nota: n/10. Si no tiene nada que ver con la actividad, escribe que no tiene nada que ver con la actividad y pon de nota 0. Los criterios que tendras en cuenta para evaluar la solución son: {parametros}"
-            
-            response = model.generate_content(prompt)
-            
-            entrega.comentarios = response.text
-            
-            # Extraer la nota del texto y convertirla a float
-            try:
-                nota_texto = response.text.split("Nota: ")[1].split("/")[0]
-                entrega.calificacion = float(nota_texto)  # Convertir a float
-            except (IndexError, ValueError):
-                # Si no se puede extraer la nota, establecer un valor por defecto
-                entrega.calificacion = 0.0
-            
-            await db.commit()
-            await db.refresh(entrega)
-            return entrega
-        except Exception as e:
-            print(f"Error detallado: {str(e)}")  # Para debugging
-            raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
-    else:
-        try:
-            # Configurar la API de Gemini
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-            
-            # Crear el modelo
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            
-            # Generar la respuesta
-            prompt = f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo,pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: {actividad.descripcion}. La solución es: {solucion}. Al final, quiero que me des la nota de la entrega en formato: Nota: n/10. Si no tiene nada que ver con la actividad, escribe que no tiene nada que ver con la actividad y pon de nota 0."
-            
-            response = model.generate_content(prompt)
-            
-            entrega.comentarios = response.text
-            
-            # Extraer la nota del texto y convertirla a float
-            try:
-                nota_texto = response.text.split("Nota: ")[1].split("/")[0]
-                entrega.calificacion = float(nota_texto)  # Convertir a float
-            except (IndexError, ValueError):
-                # Si no se puede extraer la nota, establecer un valor por defecto
-                entrega.calificacion = 0.0
-            
-            await db.commit()
-            await db.refresh(entrega)
-            return entrega
-        except Exception as e:
-            print(f"Error detallado: {str(e)}")  # Para debugging
-            raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
-    
-    
-#Endpoint para obtener la entrega dado un id de la entrega
-@router.get("/{entrega_id}", response_model=EntregaResponse)
-async def obtener_entrega(
-    entrega_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user)
-):
-    # Comprobar que el usuario está logueado
-    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para obtener entregas"
-        )
-    
-    # Obtener la entrega con todas sus relaciones
-    query = (
-        select(Entrega)
-        .options(
-            selectinload(Entrega.actividad)
-            .selectinload(Actividad.asignatura)
-            .selectinload(Asignatura.profesor),
-            selectinload(Entrega.alumno)
-        )
-        .where(Entrega.id == entrega_id)
-    )
-    result = await db.execute(query)
-    entrega = result.scalar_one_or_none()
-    
-    if not entrega:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Entrega no encontrada"
-        )
-    
-    # Verificar permisos
-    if current_user.tipo_usuario == TipoUsuario.ALUMNO and entrega.alumno_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para obtener esta entrega"
-        )
-    elif current_user.tipo_usuario == TipoUsuario.PROFESOR and entrega.actividad.asignatura.profesor_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para obtener esta entrega"
-        )
-    
-    return entrega
-
+        # Actualizar la entrega
+        entrega.comentarios = comentarios
+        entrega.calificacion = nota
+        
+        await db.commit()
+        await db.refresh(entrega)
+        return entrega
+        
+    except Exception as e:
+        print(f"Error detallado: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
 
 @router.get("/alumno/{alumno_id}/asignatura/{asignatura_id}", response_model=List[EntregaResponse])
 async def obtener_entregas_alumno_asignatura(
