@@ -24,6 +24,7 @@ import os
 import mimetypes
 from enum import Enum
 from typing import Optional
+from abc import ABC, abstractmethod
 
 router = APIRouter()
 
@@ -546,7 +547,7 @@ async def obtener_entregas_alumno_actividad(
     
     return entregas
 
-
+"""  
 @router.put("/evaluar-texto-gemini/{entrega_id}", response_model=EntregaResponse)
 async def evaluar_texto_gemini(
     entrega_id: int,
@@ -708,7 +709,8 @@ async def evaluar_texto_gemini(
         except Exception as e:
             print(f"Error detallado: {str(e)}")  # Para debugging
             raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
-    
+
+"""
     
 #Endpoint para obtener la entrega dado un id de la entrega
 @router.get("/{entrega_id}", response_model=EntregaResponse)
@@ -911,52 +913,61 @@ async def evaluar_entrega(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en el proceso de evaluación: {str(e)}")
 
-async def evaluar_con_gemini(prompt: str, actividad: Actividad, solucion: str) -> tuple[str, float]:
-    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    response = model.generate_content(prompt)
-    
-    # Extraer nota
-    try:
-        nota_texto = response.text.split("Nota: ")[1].split("/")[0]
-        nota = float(nota_texto)
-    except (IndexError, ValueError):
-        nota = 0.0
-        
-    return response.text, nota
+from abc import ABC, abstractmethod
 
-async def evaluar_con_llama(prompt: str, actividad: Actividad, solucion: str) -> tuple[str, float]:
-    response = requests.post(
-        f"{os.getenv('LLAMA_API_URL', 'http://192.168.117.196:5000')}/v1/chat/completions",
-        json={
-            "messages": [
-                {"role": "system", "content": f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo en base al enunciado siguiente: {actividad.descripcion}"},
-                {"role": "user", "content": f"{solucion}"}
-            ],
-            "temperature": 0.7,
-        }
-    )
-    response_text = response.json()["choices"][0]["message"]["content"]
-    
-    # Extraer nota (implementar lógica similar a Gemini)
-    try:
-        nota_texto = response_text.split("Nota: ")[1].split("/")[0]
-        nota = float(nota_texto)
-    except (IndexError, ValueError):
-        nota = 0.0
-        
-    return response_text, nota
+class EvaluadorIA(ABC):
+    @abstractmethod
+    async def evaluar(self, prompt: str, actividad: Actividad, solucion: str) -> tuple[str, float]:
+        pass
 
-async def evaluar_con_gpt(prompt: str, actividad: Actividad, solucion: str) -> tuple[str, float]:
-    # Implementar llamada a GPT cuando sea necesario
-    pass
+    def extraer_nota(self, texto: str) -> float:
+        try:
+            nota_texto = texto.split("Nota: ")[1].split("/")[0]
+            return float(nota_texto)
+        except (IndexError, ValueError):
+            return 0.0
 
-async def get_evaluador_ia() -> ModeloIA:
-    modelo = os.getenv("MODELO_IA", "gemini").lower()
-    try:
-        return ModeloIA(modelo)
-    except ValueError:
-        return ModeloIA.GEMINI
+class GeminiEvaluador(EvaluadorIA):
+    async def evaluar(self, prompt: str, actividad: Actividad, solucion: str) -> tuple[str, float]:
+        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content(prompt)
+        nota = self.extraer_nota(response.text)
+        return response.text, nota
+
+class LlamaEvaluador(EvaluadorIA):
+    async def evaluar(self, prompt: str, actividad: Actividad, solucion: str) -> tuple[str, float]:
+        response = requests.post(
+            f"{os.getenv('LLAMA_API_URL', 'http://192.168.117.196:5000')}/v1/chat/completions",
+            json={
+                "messages": [
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": solucion}
+                ],
+                "temperature": 0.7,
+            }
+        )
+        response_text = response.json()["choices"][0]["message"]["content"]
+        nota = self.extraer_nota(response_text)
+        return response_text, nota
+
+class GPTEvaluador(EvaluadorIA):
+    async def evaluar(self, prompt: str, actividad: Actividad, solucion: str) -> tuple[str, float]:
+        # Implementar cuando sea necesario
+        pass
+
+class EvaluadorFactory:
+    _evaluadores = {
+        "gemini": GeminiEvaluador,
+        "llama": LlamaEvaluador,
+        "gpt": GPTEvaluador
+    }
+
+    @classmethod
+    def crear_evaluador(cls) -> EvaluadorIA:
+        modelo = os.getenv("MODELO_IA", "gemini").lower()
+        evaluador_class = cls._evaluadores.get(modelo, GeminiEvaluador)
+        return evaluador_class()
 
 @router.put("/evaluar-texto/{entrega_id}", response_model=EntregaResponse)
 async def evaluar_texto(
@@ -964,28 +975,43 @@ async def evaluar_texto(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    # Verificaciones iniciales (mantener el código existente)
-    # ... existing code ...
+    # Verificaciones de permisos
+    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para evaluar entregas"
+        )
     
-    # Obtener el modelo de IA configurado
-    modelo_ia = await get_evaluador_ia()
+    # Obtener la entrega y la actividad
+    query = select(Entrega).where(Entrega.id == entrega_id)
+    result = await db.execute(query)
+    entrega = result.scalar_one_or_none()
     
-    # Preparar el prompt base
-    prompt_base = f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo, pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: {actividad.descripcion}. La solución es: {solucion}."
+    if not entrega:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entrega no encontrada"
+        )
     
-    if actividad.lenguaje_programacion:
-        prompt_base += f" La solución debe estar en {actividad.lenguaje_programacion}."
-    if actividad.parametros_evaluacion:
-        prompt_base += f" Los criterios que tendrás en cuenta para evaluar la solución son: {actividad.parametros_evaluacion}"
+    query = select(Actividad).where(Actividad.id == entrega.actividad_id)
+    result = await db.execute(query)
+    actividad = result.scalar_one_or_none()
+    
+    if not actividad:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Actividad no encontrada"
+        )
     
     try:
-        # Seleccionar el evaluador según la configuración
-        if modelo_ia == ModeloIA.GEMINI:
-            comentarios, nota = await evaluar_con_gemini(prompt_base, actividad, entrega.texto_ocr)
-        elif modelo_ia == ModeloIA.LLAMA:
-            comentarios, nota = await evaluar_con_llama(prompt_base, actividad, entrega.texto_ocr)
-        elif modelo_ia == ModeloIA.GPT:
-            comentarios, nota = await evaluar_con_gpt(prompt_base, actividad, entrega.texto_ocr)
+        # Crear el evaluador según la configuración
+        evaluador = EvaluadorFactory.crear_evaluador()
+        
+        # Preparar el prompt
+        prompt = construir_prompt(actividad, entrega.texto_ocr)
+        
+        # Evaluar la entrega
+        comentarios, nota = await evaluador.evaluar(prompt, actividad, entrega.texto_ocr)
         
         # Actualizar la entrega
         entrega.comentarios = comentarios
@@ -997,7 +1023,22 @@ async def evaluar_texto(
         
     except Exception as e:
         print(f"Error detallado: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al evaluar la entrega: {str(e)}")
+
+def construir_prompt(actividad: Actividad, solucion: str) -> str:
+    prompt = (
+        f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback "
+        f"constructivo, pero muy breve y quiero que también me des la nota de la entrega en formato: "
+        f"Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: "
+        f"{actividad.descripcion}. La solución es: {solucion}."
+    )
+    
+    if actividad.lenguaje_programacion:
+        prompt += f" La solución debe estar en {actividad.lenguaje_programacion}."
+    if actividad.parametros_evaluacion:
+        prompt += f" Los criterios que tendrás en cuenta para evaluar la solución son: {actividad.parametros_evaluacion}"
+    
+    return prompt
 
 @router.get("/alumno/{alumno_id}/asignatura/{asignatura_id}", response_model=List[EntregaResponse])
 async def obtener_entregas_alumno_asignatura(

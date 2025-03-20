@@ -206,7 +206,7 @@ class SubmissionService {
   Future<void> evaluateSubmissionWithGemini(int entregaId, String token) async {
     try {
       final response = await _client.put(
-        Uri.parse('$_baseUrl/entregas/evaluar-texto-gemini/$entregaId'),
+        Uri.parse('$_baseUrl/entregas/evaluar-texto/$entregaId'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
