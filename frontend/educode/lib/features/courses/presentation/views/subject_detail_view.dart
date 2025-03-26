@@ -312,8 +312,63 @@ class _SubjectDetailViewState extends State<SubjectDetailView> {
 
   @override
   Widget build(BuildContext context) {
-    final isTeacher = context.read<AuthProvider>().currentUser?.tipoUsuario == 'Profesor';
+    final user = context.read<AuthProvider>().currentUser;
+    final isTeacher = user?.tipoUsuario == 'Profesor';
+    final isOwner = user?.id == widget.subject.profesorId;
     final colors = Theme.of(context).colorScheme;
+
+    // Lista de pestañas para determinar el número correcto
+    final List<Widget> tabs = [
+      const Tab(
+        icon: Icon(Icons.info_outline),
+        text: 'Info',
+      ),
+      const Tab(
+        icon: Icon(Icons.assignment_outlined),
+        text: 'Tareas',
+      ),
+      const Tab(
+        icon: Icon(Icons.people_outline),
+        text: 'Alumnos',
+      ),
+      if (isTeacher)
+        const Tab(
+          icon: Icon(Icons.analytics_outlined),
+          text: 'Estadísticas',
+        )
+      else
+        const Tab(
+          icon: Icon(Icons.analytics_outlined),
+          text: 'Mi Progreso',
+        ),
+    ];
+
+    // Crear las vistas correspondientes
+    final List<Widget> tabViews = [
+      _SubjectInfoTab(subject: widget.subject),
+      _ActivitiesTab(
+        activities: _activities,
+        isTeacher: isTeacher,
+        subjectId: widget.subject.id,
+        onDeleteActivity: _deleteActivity,
+        onEditActivity: _editActivity,
+      ),
+      StudentsTab(
+        subjectId: widget.subject.id, 
+        activities: _activities,
+        showAsStudent: !isTeacher,
+      ),
+      if (isTeacher)
+        _StatisticsTab(
+          subject: widget.subject,
+          activities: _activities,
+        )
+      else
+        StudentProgressTab(
+          subjectId: widget.subject.id,
+          activities: _activities,
+        ),
+    ];
 
     return MultiProvider(
       providers: [
@@ -332,159 +387,145 @@ class _SubjectDetailViewState extends State<SubjectDetailView> {
             SubmissionService(),
           ),
         ),
+        ChangeNotifierProvider(
+          create: (context) => ProfileProvider(
+            profileService: ProfileService(),
+          ),
+        ),
       ],
       child: DefaultTabController(
-        length: isTeacher ? 4 : 4,
-        child: Scaffold(
-          appBar: AppBar(
-            title: Text(
-              widget.subject.nombre,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            backgroundColor: colors.primary,
-            foregroundColor: colors.onPrimary,
-            elevation: 0,
-            actions: [
-              if (!isTeacher)
-                IconButton(
-                  icon: Icon(
-                    Icons.exit_to_app,
-                    color: colors.onPrimary,
-                  ),
-                  onPressed: _cancelEnrollment,
-                  tooltip: 'Darme de baja de la asignatura',
-                ),
-            ],
-            bottom: TabBar(
-              labelColor: colors.onPrimary,
-              unselectedLabelColor: colors.onPrimary.withOpacity(0.7),
-              indicatorColor: colors.onPrimary,
-              dividerColor: Colors.transparent,
-              tabs: [
-                const Tab(
-                  icon: Icon(Icons.info_outline),
-                  text: 'Info',
-                ),
-                const Tab(
-                  icon: Icon(Icons.assignment_outlined),
-                  text: 'Tareas',
-                ),
-                const Tab(
-                  icon: Icon(Icons.people_outline),
-                  text: 'Alumnos',
-                ),
-                if (isTeacher)
-                  const Tab(
-                    icon: Icon(Icons.analytics_outlined),
-                    text: 'Estadísticas',
-                  )
-                else
-                  const Tab(
-                    icon: Icon(Icons.analytics_outlined),
-                    text: 'Mi Progreso',
-                  ),
+        length: tabs.length, // Usar la longitud real de las pestañas
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                colors.primary.withOpacity(0.05),
+                colors.primary.withOpacity(0.1),
               ],
             ),
           ),
-          body: TabBarView(
+          child: Stack(
             children: [
-              _SubjectInfoTab(subject: widget.subject),
-              _ActivitiesTab(
-                activities: _activities,
-                isTeacher: isTeacher,
-                subjectId: widget.subject.id,
-                onDeleteActivity: _deleteActivity,
-                onEditActivity: _editActivity,
-              ),
-              StudentsTab(
-                subjectId: widget.subject.id, 
-                activities: _activities,
-                showAsStudent: !isTeacher,
-              ),
-              if (isTeacher)
-                _StatisticsTab(
-                  subject: widget.subject,
-                  activities: _activities,
-                )
-              else
-                StudentProgressTab(
-                  subjectId: widget.subject.id,
-                  activities: _activities,
+              // Patrón de líneas decorativas en el fondo
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: CurvesPatternPainter(
+                    isDarkMode: Theme.of(context).brightness == Brightness.dark,
+                  ),
                 ),
+              ),
+              // Scaffold principal
+              Scaffold(
+                // Decoración con el mismo fondo estilizado de la aplicación
+                backgroundColor: Colors.transparent,
+                extendBodyBehindAppBar: false,
+                appBar: AppBar(
+                  title: Text(
+                    widget.subject.nombre,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  backgroundColor: colors.primary,
+                  foregroundColor: colors.onPrimary,
+                  elevation: 0,
+                  actions: [
+                    if (!isTeacher)
+                      IconButton(
+                        icon: Icon(
+                          Icons.exit_to_app,
+                          color: colors.onPrimary,
+                        ),
+                        onPressed: _cancelEnrollment,
+                        tooltip: 'Darme de baja de la asignatura',
+                      ),
+                  ],
+                  bottom: TabBar(
+                    labelColor: colors.onPrimary,
+                    unselectedLabelColor: colors.onPrimary.withOpacity(0.7),
+                    indicatorColor: colors.onPrimary,
+                    dividerColor: Colors.transparent,
+                    tabs: tabs,
+                  ),
+                ),
+                body: TabBarView(
+                  children: tabViews,
+                ),
+                floatingActionButton: isTeacher
+                    ? Builder(
+                        builder: (context) {
+                          final tabController = DefaultTabController.of(context);
+                          return StreamBuilder<int>(
+                            stream: Stream.periodic(
+                              const Duration(milliseconds: 100),
+                              (_) => tabController.index,
+                            ),
+                            builder: (context, snapshot) {
+                              if (snapshot.data == 1) {
+                                return FloatingActionButton(
+                                  onPressed: () async {
+                                    final result = await showDialog(
+                                      context: context,
+                                      builder: (context) => const CreateActivityDialog(),
+                                    );
+
+                                    if (result != null && mounted) {
+                                      try {
+                                        final token = context.read<AuthProvider>().token;
+                                        if (token == null) return;
+
+                                        final activityProvider = context.read<ActivityProvider>();
+                                        final newActivity = await activityProvider.createActivity(
+                                          widget.subject.id,
+                                          result,
+                                          token,
+                                        );
+
+                                        setState(() {
+                                          _activities = [..._activities, newActivity];
+                                        });
+
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Actividad creada correctamente'),
+                                              backgroundColor: Colors.green,
+                                            ),
+                                          );
+                                        }
+                                      } catch (e) {
+                                        if (kDebugMode) {
+                                          print('Error al crear actividad: $e');
+                                        }
+                                        if (mounted) {
+                                          await _refreshActivities();
+                                          
+                                          if (!e.toString().contains('Error de conexión')) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text('Error: ${e.toString()}'),
+                                                backgroundColor: Colors.red,
+                                              ),
+                                            );
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  child: const Icon(Icons.add),
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            },
+                          );
+                        },
+                      )
+                    : null,
+              ),
             ],
           ),
-          floatingActionButton: isTeacher
-              ? Builder(
-                  builder: (context) {
-                    final tabController = DefaultTabController.of(context);
-                    return StreamBuilder<int>(
-                      stream: Stream.periodic(
-                        const Duration(milliseconds: 100),
-                        (_) => tabController.index,
-                      ),
-                      builder: (context, snapshot) {
-                        if (snapshot.data == 1) {
-                          return FloatingActionButton(
-                            onPressed: () async {
-                              final result = await showDialog(
-                                context: context,
-                                builder: (context) => const CreateActivityDialog(),
-                              );
-
-                              if (result != null && mounted) {
-                                try {
-                                  final token = context.read<AuthProvider>().token;
-                                  if (token == null) return;
-
-                                  final activityProvider = context.read<ActivityProvider>();
-                                  final newActivity = await activityProvider.createActivity(
-                                    widget.subject.id,
-                                    result,
-                                    token,
-                                  );
-
-                                  setState(() {
-                                    _activities = [..._activities, newActivity];
-                                  });
-
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Actividad creada correctamente'),
-                                        backgroundColor: Colors.green,
-                                      ),
-                                    );
-                                  }
-                                } catch (e) {
-                                  if (kDebugMode) {
-                                    print('Error al crear actividad: $e');
-                                  }
-                                  if (mounted) {
-                                    await _refreshActivities();
-                                    
-                                    if (!e.toString().contains('Error de conexión')) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text('Error: ${e.toString()}'),
-                                          backgroundColor: Colors.red,
-                                        ),
-                                      );
-                                    }
-                                  }
-                                }
-                              }
-                            },
-                            child: const Icon(Icons.add),
-                          );
-                        }
-                        return const SizedBox.shrink();
-                      },
-                    );
-                  },
-                )
-              : null,
         ),
       ),
     );
@@ -663,15 +704,31 @@ class _SubjectInfoTab extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       child: Row(
                         children: [
-                          CircleAvatar(
-                            radius: 24,
-                            backgroundColor: colors.primary,
-                            child: Text(
-                              subject.profesor.nombre.substring(0, 1).toUpperCase(),
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
+                          Hero(
+                            tag: 'subject_${subject.id}',
+                            child: Material(
+                              elevation: 4,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              color: colors.primary,
+                              child: Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  color: colors.primary,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    subject.nombre.substring(0, 1).toUpperCase(),
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -1160,6 +1217,89 @@ class _ActivitiesTab extends StatelessWidget {
 
   bool _isOverdue(DateTime dueDate) {
     return DateTime.now().isAfter(dueDate);
+  }
+}
+
+// Clase para dibujar el patrón de líneas curvas decorativas en el fondo
+class CurvesPatternPainter extends CustomPainter {
+  final bool isDarkMode;
+  
+  CurvesPatternPainter({required this.isDarkMode});
+  
+  @override
+  void paint(Canvas canvas, Size size) {
+    final wavePaint = Paint()
+      ..color = isDarkMode 
+          ? Colors.white.withOpacity(0.03)
+          : Colors.blue.withOpacity(0.04)
+      ..strokeWidth = 1.2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    
+    // Ondas suaves horizontales 
+    final horizontalWaveSpacing = 80.0;
+    final waveAmplitude = 20.0;
+    final waveLength = 150.0;
+    
+    for (double y = horizontalWaveSpacing; y < size.height; y += horizontalWaveSpacing) {
+      final path = Path();
+      path.moveTo(0, y);
+      
+      for (double x = 0; x < size.width; x += waveLength / 2) {
+        path.quadraticBezierTo(
+          x + (waveLength / 4), y + waveAmplitude,
+          x + (waveLength / 2), y
+        );
+        
+        if (x + waveLength <= size.width) {
+          path.quadraticBezierTo(
+            x + (waveLength * 3 / 4), y - waveAmplitude,
+            x + waveLength, y
+          );
+        }
+      }
+      
+      canvas.drawPath(path, wavePaint);
+    }
+    
+    // Ondas verticales en los bordes
+    final verticalWavePaint = Paint()
+      ..color = isDarkMode 
+          ? Colors.blue.withOpacity(0.02)
+          : Colors.blue.withOpacity(0.03)
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+    
+    final verticalWaveSpacing = 100.0;
+    final vWaveAmplitude = 15.0;
+    final vWaveLength = 120.0;
+    
+    // Ondas en el lado derecho
+    for (double x = size.width - 70; x < size.width + 10; x += 30) {
+      final path = Path();
+      path.moveTo(x, 0);
+      
+      for (double y = 0; y < size.height; y += vWaveLength / 2) {
+        path.quadraticBezierTo(
+          x - vWaveAmplitude, y + (vWaveLength / 4),
+          x, y + (vWaveLength / 2)
+        );
+        
+        if (y + vWaveLength <= size.height) {
+          path.quadraticBezierTo(
+            x + vWaveAmplitude, y + (vWaveLength * 3 / 4),
+            x, y + vWaveLength
+          );
+        }
+      }
+      
+      canvas.drawPath(path, verticalWavePaint);
+    }
+  }
+  
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    return true;
   }
 }
 

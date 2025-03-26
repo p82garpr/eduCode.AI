@@ -20,6 +20,7 @@ import 'features/auth/presentation/pages/password_reset_page.dart';
 import 'features/courses/presentation/pages/home_page.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/data/services/auth_service.dart';
+import 'dart:math';
 
 void main() {
   // Asegurarse de que Flutter está inicializado
@@ -141,36 +142,217 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     return Consumer<ThemeProvider>(
       builder: (context, themeProvider, child) {
-        return MaterialApp(
-          navigatorKey: navigatorKey,
-          debugShowCheckedModeBanner: false,
-          title: 'EduCode',
-          theme: AppTheme.lightTheme,
-          darkTheme: AppTheme.darkTheme,
-          themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-          home: FutureBuilder(
-            future: Provider.of<AuthProvider>(context, listen: false).checkAuthStatus(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Scaffold(
-                  body: Center(
-                    child: CircularProgressIndicator(),
+        return AnimatedBuilder(
+          animation: themeProvider,
+          builder: (context, _) {
+            // Si está animando, aplicamos una transición suave
+            if (themeProvider.isAnimating) {
+              return _buildAnimatedApp(context, themeProvider, child);
+            }
+            
+            // App normal sin animación
+            return MaterialApp(
+              navigatorKey: navigatorKey,
+              debugShowCheckedModeBanner: false,
+              title: 'EduCode',
+              theme: AppTheme.lightTheme,
+              darkTheme: AppTheme.darkTheme,
+              themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+              builder: (context, child) {
+                // Contenedor con fondo de gradiente decorativo para toda la app
+                return Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: themeProvider.isDarkMode
+                          ? [
+                              const Color(0xFF0A1929), // Azul oscuro
+                              const Color(0xFF0D2445), // Azul medio oscuro
+                            ]
+                          : [
+                              const Color(0xFFF5F9FF), // Azul muy claro casi blanco
+                              const Color(0xFFDCEAFF), // Azul claro suave
+                            ],
+                    ),
+                  ),
+                  child: Stack(
+                    children: [
+                      // Patrón de líneas decorativas curvas
+                      Positioned.fill(
+                        child: CustomPaint(
+                          painter: CurvesPatternPainter(
+                            isDarkMode: themeProvider.isDarkMode,
+                          ),
+                        ),
+                      ),
+                      
+                      // Contenido principal de la app
+                      child!,
+                    ],
                   ),
                 );
-              }
+              },
+              home: FutureBuilder(
+                future: Provider.of<AuthProvider>(context, listen: false).checkAuthStatus(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Scaffold(
+                      body: Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+                  }
 
-              final isAuthenticated = snapshot.data ?? false;
-              return isAuthenticated ? const HomePage() : const LoginPage();
-            },
-          ),
-          routes: {
-            '/login': (context) => const LoginPage(),
-            '/home': (context) => const HomePage(),
-            '/reset-password': (context) => const PasswordResetPage(),
-            '/student-activity-submission': (context) => const StudentActivitySubmissionPage(),
+                  final isAuthenticated = snapshot.data ?? false;
+                  return isAuthenticated ? const HomePage() : const LoginPage();
+                },
+              ),
+              routes: {
+                '/login': (context) => const LoginPage(),
+                '/home': (context) => const HomePage(),
+                '/reset-password': (context) => const PasswordResetPage(),
+                '/student-activity-submission': (context) => const StudentActivitySubmissionPage(),
+              },
+            );
           },
         );
       },
     );
+  }
+
+  Widget _buildAnimatedApp(BuildContext context, ThemeProvider themeProvider, Widget? childWidget) {
+    // Determinar modo actual
+    final bool isGoingDark = !themeProvider.isDarkMode;
+    
+    // Colores directos sin interpolación
+    final List<Color> currentColors = isGoingDark
+        ? [const Color(0xFF0A1929), const Color(0xFF0D2445)] // Colores modo oscuro
+        : [const Color(0xFFF5F9FF), const Color(0xFFDCEAFF)]; // Colores modo claro
+    
+    return MaterialApp(
+      navigatorKey: navigatorKey,
+      debugShowCheckedModeBanner: false,
+      title: 'EduCode',
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: isGoingDark ? ThemeMode.dark : ThemeMode.light,
+      builder: (context, appChild) {
+        // Transición simple con solo un efecto de fade
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: currentColors,
+            ),
+          ),
+          child: Stack(
+            children: [
+              // Patrón de fondo
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: CurvesPatternPainter(
+                    isDarkMode: isGoingDark,
+                  ),
+                ),
+              ),
+              
+              // Contenido principal con un simple crossfade para transición
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 150),
+                child: appChild!,
+              ),
+            ],
+          ),
+        );
+      },
+      home: FutureBuilder(
+        future: Provider.of<AuthProvider>(context, listen: false).checkAuthStatus(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(),
+              ),
+            );
+          }
+
+          final isAuthenticated = snapshot.data ?? false;
+          return isAuthenticated ? const HomePage() : const LoginPage();
+        },
+      ),
+      routes: {
+        '/login': (context) => const LoginPage(),
+        '/home': (context) => const HomePage(),
+        '/reset-password': (context) => const PasswordResetPage(),
+        '/student-activity-submission': (context) => const StudentActivitySubmissionPage(),
+      },
+    );
+  }
+}
+
+/// Dibuja un patrón decorativo de curvas suaves en el fondo de la aplicación
+class CurvesPatternPainter extends CustomPainter {
+  final bool isDarkMode;
+  
+  CurvesPatternPainter({required this.isDarkMode});
+  
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0
+      ..color = isDarkMode 
+          ? Colors.white.withOpacity(0.05) 
+          : Colors.black.withOpacity(0.03);
+    
+    // Creamos varias curvas decorativas
+    for (int i = 0; i < 5; i++) {
+      final double offset = size.width * 0.2 * i;
+      
+      final path = Path();
+      path.moveTo(0, size.height * 0.2 + offset);
+      
+      // Primera curva
+      path.quadraticBezierTo(
+        size.width * 0.25, 
+        size.height * 0.3 + sin(i * 0.4) * size.height * 0.1, 
+        size.width * 0.5, 
+        size.height * 0.2 + cos(i * 0.3) * size.height * 0.1
+      );
+      
+      // Segunda curva
+      path.quadraticBezierTo(
+        size.width * 0.75, 
+        size.height * 0.1 + sin(i * 0.2) * size.height * 0.1, 
+        size.width, 
+        size.height * 0.3 + sin(i * 0.5) * size.height * 0.1
+      );
+      
+      canvas.drawPath(path, paint);
+    }
+    
+    // Curvas verticales
+    for (int i = 0; i < 3; i++) {
+      final double offset = size.height * 0.2 * i;
+      
+      final path = Path();
+      path.moveTo(size.width * 0.1 + offset, 0);
+      
+      path.quadraticBezierTo(
+        size.width * 0.2 + sin(i * 0.3) * size.width * 0.1, 
+        size.height * 0.3, 
+        size.width * 0.1 + offset, 
+        size.height
+      );
+      
+      canvas.drawPath(path, paint);
+    }
+  }
+  
+  @override
+  bool shouldRepaint(covariant CurvesPatternPainter oldDelegate) {
+    return oldDelegate.isDarkMode != isDarkMode;
   }
 }

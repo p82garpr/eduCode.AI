@@ -346,7 +346,9 @@ async def process_image_ocr_uco(
         
         
     files = {"image": (image.filename, image.file, image.content_type)}
-    response = requests.post("http://192.168.117.196:8000/predict/", files=files)
+    # TODO Pasar la ip al .env
+    ip_ocr = os.getenv("IP_OCR")
+    response = requests.post(f"http://{ip_ocr}:8000/predict/", files=files)
     
     # devolver el string de la respuesta que está dentro de prediction en el json
     if response.status_code == 200:
@@ -953,21 +955,101 @@ class LlamaEvaluador(EvaluadorIA):
 
 class GPTEvaluador(EvaluadorIA):
     async def evaluar(self, prompt: str, actividad: Actividad, solucion: str) -> tuple[str, float]:
-        # Implementar cuando sea necesario
-        pass
+        # Configura tu API key de OpenAI
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        
+        try:
+            response = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {openai_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "gpt-3.5-turbo",  # o el modelo que prefieras
+                    "messages": [
+                        {"role": "system", "content": prompt},
+                        {"role": "user", "content": solucion}
+                    ],
+                    "temperature": 0.7
+                }
+            )
+            
+            response_text = response.json()["choices"][0]["message"]["content"]
+            nota = self.extraer_nota(response_text)
+            return response_text, nota
+            
+        except Exception as e:
+            print(f"Error en GPT: {str(e)}")
+            raise
+
+class OllamaEvaluador(EvaluadorIA):
+    async def evaluar(self, prompt: str, actividad: Actividad, solucion: str) -> tuple[str, float]:
+        try:
+            # Configurar la URL de tu API Multi-LLM
+            api_url = os.getenv("OLLAMA_API_URL", "http://localhost:8001")
+            
+            # Hacer la petición a tu API
+            response = requests.post(
+                f"{api_url}/chat/gemma3",
+                json={
+                    "model": "gemma3",  # Usar el modelo gemma3
+                    "prompt": prompt,    # Enviar el prompt construido
+                    "max_tokens": 1024,  # Parámetros predeterminados
+                    "temperature": 0.7,
+                    "top_p": 0.6, # top_p es la probabilidad acumulada de tokens seleccionados para la respuesta, 0.9 es el 90% de probabilidad
+                    "top_k": 30 # top_k es el número de tokens considerados para la respuesta, 40 es el 40% de probabilidad
+                }
+            )
+            
+   
+            
+            response.raise_for_status()  # Lanzar excepción si hay error
+            
+            # Extraer la respuesta del formato de tu API
+            response_data = response.json()
+            response_text = response_data.get("response", "")
+            
+            # Extraer la nota
+            nota = self.extraer_nota(response_text)
+            return response_text, nota
+            
+        except Exception as e:
+            print(f"Error en Ollama API: {str(e)}")
+            raise
+
+
+
+"""
+            valores son adecuados para un evaluador:
+            top_p = 0.9: Bueno para evaluación porque permite cierta creatividad en las explicaciones mientras mantiene un enfoque en las respuestas más probables.
+            top_k = 40: Adecuado para asegurar respuestas coherentes y variadas.
+            Para una herramienta de evaluación académica, estos valores proporcionan un buen equilibrio entre:
+            Consistencia (necesaria para evaluaciones justas)
+            Creatividad (útil para proporcionar feedback constructivo)
+            Precisión (importante para la valoración del trabajo)
+            Si quisieras ajustarlos:
+            Para respuestas más consistentes y directas: reduce a top_p=0.7, top_k=20
+            Para feedback más detallado y diverso: mantén los actuales o aumenta ligeramente
+"""
+
 
 class EvaluadorFactory:
     _evaluadores = {
         "gemini": GeminiEvaluador,
         "llama": LlamaEvaluador,
-        "gpt": GPTEvaluador
+        "gpt": GPTEvaluador,
+        "ollama": OllamaEvaluador
     }
 
     @classmethod
     def crear_evaluador(cls) -> EvaluadorIA:
-        modelo = os.getenv("MODELO_IA", "gemini").lower()
-        evaluador_class = cls._evaluadores.get(modelo, GeminiEvaluador)
+        modelo = os.getenv("MODEL_IA", "gemini").lower()
+        print(f"Usando modelo: {modelo}")
+        evaluador_class = cls._evaluadores.get(modelo, GPTEvaluador)
         return evaluador_class()
+
+
 
 @router.put("/evaluar-texto/{entrega_id}", response_model=EntregaResponse)
 async def evaluar_texto(
@@ -1030,7 +1112,8 @@ def construir_prompt(actividad: Actividad, solucion: str) -> str:
         f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback "
         f"constructivo, pero muy breve y quiero que también me des la nota de la entrega en formato: "
         f"Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: "
-        f"{actividad.descripcion}. La solución es: {solucion}."
+        f"{actividad.descripcion}. La solución que se proporciona es: {solucion}. "
+        f"Recuerda, sé estrictamente con la nota, no seas tan generoso, si hace algo que no se pide, indicalo y disminuye la nota."
     )
     
     if actividad.lenguaje_programacion:
