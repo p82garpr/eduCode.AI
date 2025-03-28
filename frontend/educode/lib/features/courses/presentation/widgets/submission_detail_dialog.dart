@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../domain/models/submission_model.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
-import 'dart:ui';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';

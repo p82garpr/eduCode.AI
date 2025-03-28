@@ -25,6 +25,7 @@ import mimetypes
 from enum import Enum
 from typing import Optional
 from abc import ABC, abstractmethod
+import base64
 
 router = APIRouter()
 
@@ -337,24 +338,9 @@ async def process_image_ocr_uco(
     - HTTPException(403): Si el usuario no es profesor ni alumno
     - HTTPException(500): Si hay un error al procesar la imagen en el servidor OCR
     """
-    # Comprobar que el usuario está logueado
-    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para procesar imágenes OCR"
-        )
-        
-        
-    files = {"image": (image.filename, image.file, image.content_type)}
-    # TODO Pasar la ip al .env
-    ip_ocr = os.getenv("IP_OCR")
-    response = requests.post(f"http://{ip_ocr}:8000/predict/", files=files)
-    
-    # devolver el string de la respuesta que está dentro de prediction en el json
-    if response.status_code == 200:
-        return response.json()["prediction"]
-    else:
-        raise HTTPException(status_code=500, detail=f"Error al procesar la imagen: {response.text}")
+    # Usar el servicio OCR de la UCO (QWEN3B) a través del Factory
+    ocr_service = QWEN3BOCRService()
+    return await ocr_service.process_image(image, current_user)
 
 
    
@@ -378,55 +364,55 @@ async def process_image_ocr_azure(
     - HTTPException(403): Si el usuario no es profesor ni alumno
     - HTTPException(500): Si hay un error en el procesamiento con Azure
     """
-    # Comprobar que el usuario está logueado
-    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para procesar imágenes OCR"
-        )
-    
-    headers = {
-        'Content-Type': 'application/octet-stream',
-        'Ocp-Apim-Subscription-Key': '9TnsLp0OUYoyH25UP7V5n3mb2tSnm54J4WySPu0IKZwEJNY4RnJ7JQQJ99ALAC5RqLJXJ3w3AAAFACOGHcqc'
-    }
-    
-    try:
-        # Enviar la imagen como datos binarios
-        response = requests.post(
-            "https://pruebarafagvision.cognitiveservices.azure.com/vision/v3.2/read/analyze",
-            headers=headers,
-            data=image.file  # Enviar los bytes directamente
-        )
-        
-        response.raise_for_status()  # Lanzar excepción si hay error
-        
-        # Obtener la URL de operación del header
-        operation_url = response.headers["Operation-Location"]
-        
-        # Esperar a que el análisis termine
-        analysis_result = None
-        while True:
-            result_response = requests.get(
-                operation_url,
-                headers={'Ocp-Apim-Subscription-Key': '9TnsLp0OUYoyH25UP7V5n3mb2tSnm54J4WySPu0IKZwEJNY4RnJ7JQQJ99ALAC5RqLJXJ3w3AAAFACOGHcqc'}
-            )
-            result = result_response.json()
-            
-            if result.get("status") not in ['notStarted', 'running']:
-                analysis_result = result
-                break
-                
-            await asyncio.sleep(1)
-            
-        texto = analysis_result.get("analyzeResult", {}).get("readResults", [{}])[0].get("lines", [])
-        texto = "\n".join([line.get("text", "") for line in texto])
-        
-        return texto
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al procesar la imagen: {str(e)}")
+    # Usar el servicio OCR de Azure a través del Factory
+    ocr_service = AzureOCRService()
+    return await ocr_service.process_image(image, current_user)
 
+@router.post("/ocr/process-ollama", response_model=str)
+async def process_image_ocr_ollama(
+    image: UploadFile = File(...),  
+    current_user: Usuario = Depends(get_current_user)
+):
+    """
+    Procesa una imagen usando el servicio OCR de Ollama con Gemma3.
+    Envía la imagen codificada en base64 al servicio de Ollama y espera el resultado del análisis.
 
+    Parameters:
+    - image (UploadFile): Imagen a procesar (JPEG, PNG, GIF o JPG)
 
+    Returns:
+    - str: Texto extraído de la imagen
+
+    Raises:
+    - HTTPException(403): Si el usuario no es profesor ni alumno
+    - HTTPException(500): Si hay un error en el procesamiento con Ollama
+    """
+    # Usar el servicio OCR de Ollama a través del Factory
+    ocr_service = OllamaGemma3OCRService()
+    return await ocr_service.process_image(image, current_user)
+
+@router.post("/ocr/process", response_model=str)
+async def process_image_ocr(
+    image: UploadFile = File(...),
+    current_user: Usuario = Depends(get_current_user)
+):
+    """
+    Procesa una imagen usando el servicio OCR configurado por defecto.
+    El servicio OCR se determina mediante la variable de entorno OCR_SERVICE.
+
+    Parameters:
+    - image (UploadFile): Imagen a procesar (JPEG, PNG, GIF o JPG)
+
+    Returns:
+    - str: Texto extraído de la imagen
+
+    Raises:
+    - HTTPException(403): Si el usuario no es profesor ni alumno
+    - HTTPException(500): Si hay un error al procesar la imagen
+    """
+    # Obtener el servicio OCR a través del Factory
+    ocr_service = OCRServiceFactory.get_ocr_service()
+    return await ocr_service.process_image(image, current_user)
 
 @router.get("/actividad/{actividad_id}/export-csv")
 async def export_submissions_csv(
@@ -549,172 +535,6 @@ async def obtener_entregas_alumno_actividad(
     
     return entregas
 
-"""  
-@router.put("/evaluar-texto-gemini/{entrega_id}", response_model=EntregaResponse)
-async def evaluar_texto_gemini(
-    entrega_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user),
-):
-    
-    #comprobar que el usuario esta logueado
-    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para evaluar entregas"
-        )
-    
-    
-    # Obtener la entrega
-    query = select(Entrega).where(Entrega.id == entrega_id)
-    result = await db.execute(query)
-    entrega = result.scalar_one_or_none()
-    
-    if not entrega:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Entrega no encontrada"
-        )
-    
-    # Obtener la actividad
-    query = select(Actividad).where(Actividad.id == entrega.actividad_id)
-    result = await db.execute(query)
-    actividad = result.scalar_one_or_none()
-    
-    if not actividad:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Actividad no encontrada"
-        )
-        
-    # Obtener el texto de la entrega
-    solucion = entrega.texto_ocr
-    
-    # Obtener el lenguaje de la actividad
-    lenguaje = actividad.lenguaje_programacion
-    # Obtener los parametros de evaluacion
-    parametros = actividad.parametros_evaluacion
-    
-    if lenguaje != None and parametros != None:
-        try:
-            # Configurar la API de Gemini
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-            
-            # Crear el modelo
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            
-            # Generar la respuesta
-            prompt = f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo,pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: {actividad.descripcion}. La solución es: {solucion}. Al final, quiero que me des la nota de la entrega en formato: Nota: n/10. Si no tiene nada que ver con la actividad, escribe que no tiene nada que ver con la actividad y pon de nota 0. La solución debe estar en {lenguaje} y los criterios que tendras en cuenta para evaluar la solución son: {parametros}"
-            
-            response = model.generate_content(prompt)
-            
-            entrega.comentarios = response.text
-            
-            # Extraer la nota del texto y convertirla a float
-            try:
-                nota_texto = response.text.split("Nota: ")[1].split("/")[0]
-                entrega.calificacion = float(nota_texto)  # Convertir a float
-            except (IndexError, ValueError):
-                # Si no se puede extraer la nota, establecer un valor por defecto
-                entrega.calificacion = 0.0
-            
-            await db.commit()
-            await db.refresh(entrega)
-            return entrega
-        except Exception as e:
-            print(f"Error detallado: {str(e)}")  # Para debugging
-            raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
-    elif lenguaje != None and parametros == None:
-        try:
-            # Configurar la API de Gemini
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-            
-            # Crear el modelo
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            
-            # Generar la respuesta
-            prompt = f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo,pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: {actividad.descripcion}. La solución es: {solucion}. Al final, quiero que me des la nota de la entrega en formato: Nota: n/10. Si no tiene nada que ver con la actividad, escribe que no tiene nada que ver con la actividad y pon de nota 0. La solución debe estar en {lenguaje}."
-            
-            response = model.generate_content(prompt)
-            
-            entrega.comentarios = response.text
-            
-            # Extraer la nota del texto y convertirla a float
-            try:
-                nota_texto = response.text.split("Nota: ")[1].split("/")[0]
-                entrega.calificacion = float(nota_texto)  # Convertir a float
-            except (IndexError, ValueError):
-                # Si no se puede extraer la nota, establecer un valor por defecto
-                entrega.calificacion = 0.0
-            
-            await db.commit()
-            await db.refresh(entrega)
-            return entrega
-        except Exception as e:
-            print(f"Error detallado: {str(e)}")  # Para debugging
-            raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
-    elif lenguaje == None and parametros != None:
-        try:
-            # Configurar la API de Gemini
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-            
-            # Crear el modelo
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            
-            # Generar la respuesta
-            prompt = f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo,pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: {actividad.descripcion}. La solución es: {solucion}. Al final, quiero que me des la nota de la entrega en formato: Nota: n/10. Si no tiene nada que ver con la actividad, escribe que no tiene nada que ver con la actividad y pon de nota 0. Los criterios que tendras en cuenta para evaluar la solución son: {parametros}"
-            
-            response = model.generate_content(prompt)
-            
-            entrega.comentarios = response.text
-            
-            # Extraer la nota del texto y convertirla a float
-            try:
-                nota_texto = response.text.split("Nota: ")[1].split("/")[0]
-                entrega.calificacion = float(nota_texto)  # Convertir a float
-            except (IndexError, ValueError):
-                # Si no se puede extraer la nota, establecer un valor por defecto
-                entrega.calificacion = 0.0
-            
-            await db.commit()
-            await db.refresh(entrega)
-            return entrega
-        except Exception as e:
-            print(f"Error detallado: {str(e)}")  # Para debugging
-            raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
-    else:
-        try:
-            # Configurar la API de Gemini
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-            
-            # Crear el modelo
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            
-            # Generar la respuesta
-            prompt = f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo,pero muy breve y quiero que también me des la nota de la entrega en formato: Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: {actividad.descripcion}. La solución es: {solucion}. Al final, quiero que me des la nota de la entrega en formato: Nota: n/10. Si no tiene nada que ver con la actividad, escribe que no tiene nada que ver con la actividad y pon de nota 0."
-            
-            response = model.generate_content(prompt)
-            
-            entrega.comentarios = response.text
-            
-            # Extraer la nota del texto y convertirla a float
-            try:
-                nota_texto = response.text.split("Nota: ")[1].split("/")[0]
-                entrega.calificacion = float(nota_texto)  # Convertir a float
-            except (IndexError, ValueError):
-                # Si no se puede extraer la nota, establecer un valor por defecto
-                entrega.calificacion = 0.0
-            
-            await db.commit()
-            await db.refresh(entrega)
-            return entrega
-        except Exception as e:
-            print(f"Error detallado: {str(e)}")  # Para debugging
-            raise HTTPException(status_code=500, detail=f"Error al llamar al LLM: {str(e)}")
-
-"""
-    
-#Endpoint para obtener la entrega dado un id de la entrega
 @router.get("/{entrega_id}", response_model=EntregaResponse)
 async def obtener_entrega(
     entrega_id: int,
@@ -775,15 +595,30 @@ async def pruebaGemini(
         contents = [prompt])
     return response.text
 
-
-
-@router.get("/ocr-azure/{entrega_id}")
+@router.get("/ocr/{entrega_id}")
 async def obtener_ocr_entrega(
     entrega_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user)
+    current_user: Usuario = Depends(get_current_user),
+    servicio: str = "default"  # Parámetro opcional para especificar el servicio
 ):
-     # Obtener la entrega
+    """
+    Procesa la imagen de una entrega existente usando OCR y actualiza el texto en la base de datos.
+    Permite especificar el servicio OCR a utilizar mediante el parámetro 'servicio'.
+
+    Parameters:
+    - entrega_id (int): ID de la entrega
+    - servicio (str, opcional): Servicio OCR a utilizar ('uco', 'azure' o 'default')
+
+    Returns:
+    - str: Texto extraído de la imagen
+
+    Raises:
+    - HTTPException(404): Si la entrega no existe o no tiene imagen
+    - HTTPException(403): Si el usuario no tiene permisos
+    - HTTPException(500): Si hay un error al procesar la imagen
+    """
+    # Obtener la entrega
     query = select(Entrega).where(Entrega.id == entrega_id)
     result = await db.execute(query)
     entrega = result.scalar_one_or_none()
@@ -794,6 +629,12 @@ async def obtener_ocr_entrega(
             detail="Entrega no encontrada"
         )
     
+    if not entrega.imagen:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="La entrega no tiene imagen"
+        )
+    
     # Verificar permisos
     if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.id != entrega.alumno_id:
         raise HTTPException(
@@ -801,47 +642,34 @@ async def obtener_ocr_entrega(
             detail="No tienes permiso para ver esta entrega"
         )
     
-    # Configurar los headers para la API de Azure
-    headers = {
-        'Content-Type': 'application/octet-stream',
-        'Ocp-Apim-Subscription-Key': '9TnsLp0OUYoyH25UP7V5n3mb2tSnm54J4WySPu0IKZwEJNY4RnJ7JQQJ99ALAC5RqLJXJ3w3AAAFACOGHcqc'
-    }
-    
     try:
-        # Enviar la imagen como datos binarios
-        response = requests.post(
-            "https://pruebarafagvision.cognitiveservices.azure.com/vision/v3.2/read/analyze",
-            headers=headers,
-            data=entrega.imagen  # Enviar los bytes directamente
+        # Crear un UploadFile a partir de la imagen almacenada
+        file_like = io.BytesIO(entrega.imagen)
+        upload_file = UploadFile(
+            filename=entrega.nombre_archivo or "imagen.jpg",
+            file=file_like,
+            content_type=entrega.tipo_imagen or "image/jpeg"
         )
         
-        response.raise_for_status()  # Lanzar excepción si hay error
+        # Seleccionar el servicio OCR
+        if servicio == "uco" or servicio == "qwen3b":
+            ocr_service = QWEN3BOCRService()
+        elif servicio == "azure":
+            ocr_service = AzureOCRService()
+        elif servicio == "ollama" or servicio == "gemma3":
+            ocr_service = OllamaGemma3OCRService()
+        else:
+            # Usar el servicio por defecto
+            ocr_service = OCRServiceFactory.get_ocr_service()
         
-        # Obtener la URL de operación del header
-        operation_url = response.headers["Operation-Location"]
+        # Procesar la imagen
+        texto = await ocr_service.process_image(upload_file, current_user)
         
-        # Esperar a que el análisis termine
-        analysis_result = None
-        while True:
-            result_response = requests.get(
-                operation_url,
-                headers={'Ocp-Apim-Subscription-Key': '9TnsLp0OUYoyH25UP7V5n3mb2tSnm54J4WySPu0IKZwEJNY4RnJ7JQQJ99ALAC5RqLJXJ3w3AAAFACOGHcqc'}
-            )
-            result = result_response.json()
-            
-            if result.get("status") not in ['notStarted', 'running']:
-                analysis_result = result
-                break
-                
-            await asyncio.sleep(1)
-            
-        texto = analysis_result.get("analyzeResult", {}).get("readResults", [{}])[0].get("lines", [])
-        texto = "\n".join([line.get("text", "") for line in texto])
-        
+        # Actualizar el texto de la entrega
         entrega.texto_ocr = texto
         await db.commit()
         await db.refresh(entrega)
-
+        
         return texto
         
     except Exception as e:
@@ -849,9 +677,7 @@ async def obtener_ocr_entrega(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al procesar la imagen: {str(e)}"
         )
-        
-        
-        
+
 @router.put("/evaluar-ocr/{entrega_id}", response_model=EntregaResponse)
 async def evaluar_entrega(
     entrega_id: int,
@@ -984,7 +810,7 @@ class GPTEvaluador(EvaluadorIA):
             raise
 
 class OllamaEvaluador(EvaluadorIA):
-    async def evaluar(self, prompt: str, actividad: Actividad, solucion: str) -> tuple[str, float]:
+    async def evaluar(self, prompt: str) -> tuple[str, float]:
         try:
             # Configurar la URL de tu API Multi-LLM
             api_url = os.getenv("OLLAMA_API_URL", "http://localhost:8001")
@@ -1021,7 +847,7 @@ class OllamaEvaluador(EvaluadorIA):
 
 
 """
-            valores son adecuados para un evaluador:
+            Qué valores son adecuados para un evaluador:
             top_p = 0.9: Bueno para evaluación porque permite cierta creatividad en las explicaciones mientras mantiene un enfoque en las respuestas más probables.
             top_k = 40: Adecuado para asegurar respuestas coherentes y variadas.
             Para una herramienta de evaluación académica, estos valores proporcionan un buen equilibrio entre:
@@ -1248,3 +1074,151 @@ async def descargar_imagen_entrega(
             "Content-Disposition": f'attachment; filename="{entrega.nombre_archivo or "imagen"}"'
         }
     )
+
+# Clase abstracta para servicios OCR
+class OCRService(ABC):
+    @abstractmethod
+    async def process_image(self, image: UploadFile, current_user: Usuario) -> str:
+        """Procesa una imagen y retorna el texto extraído"""
+        pass
+
+# Implementación del OCR de la UCO
+class QWEN3BOCRService(OCRService):
+    async def process_image(self, image: UploadFile, current_user: Usuario) -> str:
+        # Comprobar que el usuario está logueado
+        if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permiso para procesar imágenes OCR"
+            )
+            
+        files = {"image": (image.filename, image.file, image.content_type)}
+        # Obtener la IP del servicio OCR desde variables de entorno
+        ip_ocr = os.getenv("IP_OCR")
+        response = requests.post(f"http://{ip_ocr}:8000/predict/", files=files)
+        
+        # devolver el string de la respuesta que está dentro de prediction en el json
+        if response.status_code == 200:
+            return response.json()["prediction"]
+        else:
+            raise HTTPException(status_code=500, detail=f"Error al procesar la imagen: {response.text}")
+
+# Implementación del OCR de Azure
+class AzureOCRService(OCRService):
+    async def process_image(self, image: UploadFile, current_user: Usuario) -> str:
+        # Comprobar que el usuario está logueado
+        if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permiso para procesar imágenes OCR"
+            )
+        
+        # Configurar los headers de Azure
+        headers = {
+            'Content-Type': 'application/octet-stream',
+            'Ocp-Apim-Subscription-Key': os.getenv("AZURE_API_KEY", "9TnsLp0OUYoyH25UP7V5n3mb2tSnm54J4WySPu0IKZwEJNY4RnJ7JQQJ99ALAC5RqLJXJ3w3AAAFACOGHcqc")
+        }
+        
+        try:
+            # Enviar la imagen como datos binarios
+            response = requests.post(
+                os.getenv("AZURE_VISION_ENDPOINT", "https://pruebarafagvision.cognitiveservices.azure.com/vision/v3.2/read/analyze"),
+                headers=headers,
+                data=await image.read()  # Enviar los bytes directamente
+            )
+            
+            response.raise_for_status()  # Lanzar excepción si hay error
+            
+            # Obtener la URL de operación del header
+            operation_url = response.headers["Operation-Location"]
+            
+            # Esperar a que el análisis termine
+            analysis_result = None
+            while True:
+                result_response = requests.get(
+                    operation_url,
+                    headers={'Ocp-Apim-Subscription-Key': os.getenv("AZURE_API_KEY", "9TnsLp0OUYoyH25UP7V5n3mb2tSnm54J4WySPu0IKZwEJNY4RnJ7JQQJ99ALAC5RqLJXJ3w3AAAFACOGHcqc")}
+                )
+                result = result_response.json()
+                
+                if result.get("status") not in ['notStarted', 'running']:
+                    analysis_result = result
+                    break
+                    
+                await asyncio.sleep(1)
+                
+            texto = analysis_result.get("analyzeResult", {}).get("readResults", [{}])[0].get("lines", [])
+            texto = "\n".join([line.get("text", "") for line in texto])
+            
+            return texto
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error al procesar la imagen: {str(e)}")
+        
+class OllamaGemma3OCRService(OCRService):
+    async def process_image(self, image: UploadFile, current_user: Usuario) -> str:
+        try:
+            # Comprobar que el usuario está logueado
+            if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No tienes permiso para procesar imágenes OCR"
+                )
+                
+            # Configurar la URL de tu API Multi-LLM
+            api_url = os.getenv("OLLAMA_API_URL", "http://localhost:8001")
+            
+            # Leer el contenido de la imagen y codificarlo en base64
+            image_content = await image.read()
+            image_base64 = base64.b64encode(image_content).decode('utf-8')
+            
+            # Hacer la petición a tu API
+            response = requests.post(
+                f"{api_url}/chat/gemma3",
+                json={
+                    "model": "gemma3",  # Usar el modelo gemma3
+                    "prompt": "Transcribe el siguiente texto de la imagen, no añadas ningún texto adicional, solo el texto de la imagen en texto plano. Probablemente estará en español:",
+                    "images": [image_base64],  # Enviar la imagen codificada en base64
+                    "max_tokens": 1024,  # Parámetros predeterminados
+                    "temperature": 0.7,
+                    "top_p": 0.6,
+                    "top_k": 30
+                }
+            )
+            
+            response.raise_for_status()  # Lanzar excepción si hay error
+            
+            # Extraer la respuesta del formato de tu API
+            response_data = response.json()
+            response_text = response_data.get("response", "")
+            
+            return response_text
+            
+        except Exception as e:
+            print(f"Error en Ollama API: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error al procesar la imagen con Ollama: {str(e)}")
+
+        
+# Factory para crear servicios OCR
+class OCRServiceFactory:
+    _services = {
+        "azure": AzureOCRService,
+        "qwen3b": QWEN3BOCRService,
+        "ollamaGemma3": OllamaGemma3OCRService,
+        
+    }
+    
+    @classmethod
+    def get_ocr_service(cls) -> OCRService:
+        # Obtener el servicio OCR configurado en las variables de entorno
+        # Por defecto, usar el servicio de la UCO
+        ocr_service = os.getenv("OCR_SERVICE", "ollamaGemma3").lower()
+        
+        # Obtener la clase de servicio
+        service_class = cls._services.get(ocr_service)
+        if not service_class:
+            # Si no se encuentra el servicio, usar el servicio de la UCO por defecto
+            print(f"Servicio OCR '{ocr_service}' no encontrado, usando OllamaGemma3 por defecto")
+            service_class = OllamaGemma3OCRService
+            
+        # Instanciar y retornar el servicio
+        return service_class()
