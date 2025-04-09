@@ -1,6 +1,6 @@
 class AppConfig {
   // URLs
-  static const String apiBaseUrl = 'http://10.0.2.2:8000/api/v1';
+  static const String apiBaseUrl = 'https://10.0.2.2:8000/api/v1';
   
   // Para probar con diferentes configuraciones, descomenta una de estas opciones:
   //static const String apiBaseUrl = 'http://192.168.1.170:8000/api/v1'; // IP específica de tu máquina

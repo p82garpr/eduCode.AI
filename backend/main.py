@@ -5,6 +5,8 @@ from database import init_db
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+import os
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -30,3 +32,23 @@ app.include_router(asignatura.router, prefix="/api/v1/asignaturas", tags=["asign
 app.include_router(inscripcion.router, prefix="/api/v1/inscripciones", tags=["inscripciones"])
 app.include_router(actividad.router, prefix="/api/v1/actividades", tags=["actividades"])
 app.include_router(entrega.router, prefix="/api/v1/entregas", tags=["entregas"])
+
+# Código para ejecutar el servidor con HTTPS si este archivo se ejecuta directamente
+if __name__ == "__main__":
+    # Comprobar si existen los certificados SSL
+    if not os.path.exists("cert.pem") or not os.path.exists("key.pem"):
+        print("No se encontraron certificados SSL. Por favor, genera los certificados primero.")
+        print("Puedes generarlos ejecutando: python generate_cert.py")
+        exit(1)
+    
+    # Iniciar servidor con HTTPS
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        ssl_keyfile="key.pem",
+        ssl_certfile="cert.pem",
+        reload=True  # Para desarrollo
+    )
+    
+    # uvicorn main:app --host 0.0.0.0 --port 8000 --ssl-keyfile key.pem --ssl-certfile cert.pem --reload

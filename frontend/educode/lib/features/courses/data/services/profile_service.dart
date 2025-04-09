@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../../../core/config/app_config.dart';
+import '../../../../core/network/http_client.dart';
 
 import '../../domain/models/user_profile_model.dart';
 
@@ -9,7 +10,8 @@ class ProfileService {
   final http.Client _client;
   final String _baseUrl = AppConfig.apiBaseUrl;
 
-  ProfileService({http.Client? client}) : _client = client ?? http.Client();
+  ProfileService({http.Client? client})
+      : _client = client ?? HttpClientFactory.createClient();
 
   Future<UserProfileModel> getUserProfile(String userId, String token) async {
     try {

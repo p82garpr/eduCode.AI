@@ -749,10 +749,39 @@ class EvaluadorIA(ABC):
         pass
 
     def extraer_nota(self, texto: str) -> float:
+        """
+        Extrae la nota de un texto que contiene una evaluación.
+        Busca patrones como "Nota: n/10" o simplemente "n/10".
+        
+        Args:
+            texto: El texto de la evaluación
+            
+        Returns:
+            La nota extraída como un float, o 0.0 si no se puede extraer
+        """
         try:
-            nota_texto = texto.split("Nota: ")[1].split("/")[0]
+            # Primero intentamos el formato "Nota: n/10"
+            if "Nota:" in texto or "Nota :" in texto:
+                # Manejar ambos casos: "Nota:" y "Nota :"
+                if "Nota:" in texto:
+                    nota_texto = texto.split("Nota:")[1].split("/")[0]
+                else:
+                    nota_texto = texto.split("Nota :")[1].split("/")[0]
+            else:
+                # Si no encontramos "Nota:", buscamos cualquier patrón "n/10"
+                import re
+                # Buscar patrones como "8/10", "9.5/10", etc.
+                patrones = re.findall(r'(\d+\.?\d*)\s*/\s*10', texto)
+                if patrones:
+                    nota_texto = patrones[0]  # Tomamos la primera coincidencia
+                else:
+                    return 0.0  # No se encontró ningún patrón válido
+            
+            # Limpiamos espacios y convertimos a float
+            nota_texto = nota_texto.strip()
             return float(nota_texto)
-        except (IndexError, ValueError):
+        except (IndexError, ValueError) as e:
+            print(f"Error al extraer nota: {e}")
             return 0.0
 
 class GeminiEvaluador(EvaluadorIA):
@@ -763,21 +792,6 @@ class GeminiEvaluador(EvaluadorIA):
         nota = self.extraer_nota(response.text)
         return response.text, nota
 
-class LlamaEvaluador(EvaluadorIA):
-    async def evaluar(self, prompt: str, actividad: Actividad, solucion: str) -> tuple[str, float]:
-        response = requests.post(
-            f"{os.getenv('LLAMA_API_URL', 'http://192.168.117.196:5000')}/v1/chat/completions",
-            json={
-                "messages": [
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": solucion}
-                ],
-                "temperature": 0.7,
-            }
-        )
-        response_text = response.json()["choices"][0]["message"]["content"]
-        nota = self.extraer_nota(response_text)
-        return response_text, nota
 
 class GPTEvaluador(EvaluadorIA):
     async def evaluar(self, prompt: str, actividad: Actividad, solucion: str) -> tuple[str, float]:
@@ -810,16 +824,17 @@ class GPTEvaluador(EvaluadorIA):
             raise
 
 class OllamaEvaluador(EvaluadorIA):
-    async def evaluar(self, prompt: str) -> tuple[str, float]:
+    async def evaluar(self, prompt: str, actividad: Actividad, solucion: str) -> tuple[str, float]:
         try:
             # Configurar la URL de tu API Multi-LLM
             api_url = os.getenv("OLLAMA_API_URL", "http://localhost:8001")
+            model = os.getenv("OLLAMA_MODEL", "gemma3:12b")
             
             # Hacer la petición a tu API
             response = requests.post(
-                f"{api_url}/chat/gemma3",
+                f"{api_url}/chat/{model}",
                 json={
-                    "model": "gemma3",  # Usar el modelo gemma3
+                    "model": model,  # Usar el modelo gemma3
                     "prompt": prompt,    # Enviar el prompt construido
                     "max_tokens": 1024,  # Parámetros predeterminados
                     "temperature": 0.7,
@@ -863,7 +878,6 @@ class OllamaEvaluador(EvaluadorIA):
 class EvaluadorFactory:
     _evaluadores = {
         "gemini": GeminiEvaluador,
-        "llama": LlamaEvaluador,
         "gpt": GPTEvaluador,
         "ollama": OllamaEvaluador
     }
@@ -937,16 +951,17 @@ def construir_prompt(actividad: Actividad, solucion: str) -> str:
     prompt = (
         f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback "
         f"constructivo, pero muy breve y quiero que también me des la nota de la entrega en formato: "
-        f"Nota: n/10. La actividad es {actividad.titulo} el enunciado es el siguiente: "
+        f"Nota: n/10. No uses Markdown, solo texto plano. La actividad es {actividad.titulo} el enunciado es el siguiente: "
         f"{actividad.descripcion}. La solución que se proporciona es: {solucion}. "
-        f"Recuerda, sé estrictamente con la nota, no seas tan generoso, si hace algo que no se pide, indicalo y disminuye la nota."
+        f"Recuerda, sé estricto con la nota, no seas tan generoso si está mal, si hace algo que no se pide, o no se cumple el enunciado indicalo y disminuye la nota, pero si lo hace bien, no disminuyas la nota y ponle un 10, aunque haya algunos aspectos no muy relevantes a mejorar"
     )
     
     if actividad.lenguaje_programacion:
-        prompt += f" La solución debe estar en {actividad.lenguaje_programacion}."
+        prompt += f" La solución es un fragmento de código, debe estar en {actividad.lenguaje_programacion}. Cuando me des la corrección, nunca me des el código corregido, solo el feedback. Si el código no compila por errores graves, suspende la nota, si no compila por errores menores, disminuye la nota. (No tengas en cuenta que falten incluir bibliotecas, solo evalúa el código que se proporciona)"
     if actividad.parametros_evaluacion:
-        prompt += f" Los criterios que tendrás en cuenta para evaluar la solución son: {actividad.parametros_evaluacion}"
+        prompt += f" Los criterios que tendrás en cuenta para evaluar la solución son: {actividad.parametros_evaluacion}, si no se cumple el enunciado y los criterios de evaluación indicalo y penaliza la nota"
     
+    #print(prompt)
     return prompt
 
 @router.get("/alumno/{alumno_id}/asignatura/{asignatura_id}", response_model=List[EntregaResponse])

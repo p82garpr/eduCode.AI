@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../../../core/config/app_config.dart';
+import '../../../../core/network/http_client.dart';
 
 import '../../domain/models/submission_model.dart';
 import 'package:http_parser/http_parser.dart';
@@ -11,7 +12,7 @@ class SubmissionService {
   final http.Client _client;
   final String _baseUrl = AppConfig.apiBaseUrl;
 
-  SubmissionService({http.Client? client}) : _client = client ?? http.Client();
+  SubmissionService({http.Client? client}) : _client = client ?? HttpClientFactory.createClient();
 
  Future<List<Submission>> getActivitySubmissions(int activityId, String token) async {
     try {
@@ -84,7 +85,7 @@ class SubmissionService {
 
   Future<Submission?> getStudentSubmission2(int alumnoId, int actividadId, String token) async {
     try {
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse('$_baseUrl/entregas/alumno/$alumnoId/actividad/$actividadId'),
         headers: {
           'Content-Type': 'application/json',
@@ -106,6 +107,9 @@ class SubmissionService {
 
   Future<Submission> submitActivity(int activityId, String solution, String token, {File? image}) async {
     try {
+      // Usar nuestro cliente HTTP personalizado
+      final httpClient = HttpClientFactory.createClient();
+      
       final request = http.MultipartRequest(
         'POST',
         Uri.parse('$_baseUrl/entregas/$activityId/entrega'),
@@ -126,11 +130,10 @@ class SubmissionService {
             contentType: MediaType('image', 'jpeg'),
           ),
         );
-        
       }
 
-      // Enviar la petición
-      final streamedResponse = await request.send();
+      // Enviar la petición usando el cliente seguro
+      final streamedResponse = await httpClient.send(request);
       final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode != 200 && response.statusCode != 201) {
@@ -160,7 +163,7 @@ class SubmissionService {
         final submissionData = jsonDecode(utf8.decode(response.bodyBytes));
         
         // Obtener los detalles del alumno
-        final studentResponse = await http.get(
+        final studentResponse = await _client.get(
           Uri.parse('$_baseUrl/${submissionData['alumno_id']}'),
           headers: {
             'Authorization': 'Bearer $token',
@@ -249,13 +252,13 @@ class SubmissionService {
 
   Future<String> processImageOCR(File image, String token) async {
     try {
+      // Crear un cliente HTTP que acepte certificados autofirmados
+      final httpClient = HttpClientFactory.createClient();
+      
       // Crear el request multipart
       final request = http.MultipartRequest(
         'POST',
-        //Uri.parse('$_baseUrl/entregas/ocr/process'),
         Uri.parse('$_baseUrl/entregas/ocr/process-uco'),
-        
-        
       );
 
       // Añadir el token de autorización
@@ -270,12 +273,12 @@ class SubmissionService {
         ),
       );
 
-      // Enviar la petición
-      final response = await request.send();
-      final responseBody = await response.stream.bytesToString();
+      // Configurar un cliente HTTP que acepte certificados autofirmados
+      final streamedResponse = await httpClient.send(request);
+      final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
-        final decodedData = json.decode(responseBody);
+        final decodedData = json.decode(response.body);
         return decodedData as String;
       } else {
         throw Exception('Error al procesar la imagen: ${response.statusCode}');

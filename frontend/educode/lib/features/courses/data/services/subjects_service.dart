@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:educode/features/courses/domain/models/activity_model.dart';
 import 'package:http/http.dart' as http;
 import '../../../../core/config/app_config.dart';
+import '../../../../core/network/http_client.dart';
 
 import '../../domain/models/subject_model.dart';
 
@@ -9,7 +10,8 @@ class SubjectsService {
   final http.Client _client;
   final String _baseUrl = AppConfig.apiBaseUrl;
 
-  SubjectsService({http.Client? client}) : _client = client ?? http.Client();
+  SubjectsService({http.Client? client}) 
+      : _client = client ?? HttpClientFactory.createClient();
 
   Future<List<Subject>> getCoursesByUser(String userId, String role, String token) async {
     try {
@@ -17,7 +19,7 @@ class SubjectsService {
           ? '/inscripciones/mis-asignaturas-impartidas/'
           : '/inscripciones/mis-asignaturas';
 
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse('$_baseUrl$endpoint'),
         headers: {
           'Authorization': 'Bearer $token',
@@ -140,7 +142,7 @@ class SubjectsService {
 
   Future<List<ActivityModel>> getCourseActivities(int courseId, String token) async {
     try {
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse('$_baseUrl/actividades/asignatura/$courseId'),
         headers: {
           'Authorization': 'Bearer $token',

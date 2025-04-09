@@ -231,7 +231,7 @@ async def test_evaluar_entrega_gemini(
 ):
     """Test para verificar que se puede evaluar una entrega usando Gemini"""
     response = await async_client.put(
-        f"/api/v1/entregas/evaluar-texto-gemini/{entrega_prueba.id}",
+        f"/api/v1/entregas/evaluar-texto/{entrega_prueba.id}",
         headers={"Authorization": f"Bearer {token_profesor}"}
     )
     

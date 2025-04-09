@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:educode/core/config/app_config.dart';
+import 'package:educode/core/network/http_client.dart';
 import 'package:http/http.dart' as http;
 import '../../domain/models/user_model.dart';
 
@@ -7,7 +8,8 @@ class AuthService {
   final http.Client _client;
   final String _baseUrl = AppConfig.apiBaseUrl;
 
-  AuthService({http.Client? client}) : _client = client ?? http.Client();
+  AuthService({http.Client? client}) 
+      : _client = client ?? HttpClientFactory.createClient();
 
   Future<String> login(String email, String password) async {
     try {

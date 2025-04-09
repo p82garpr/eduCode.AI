@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../../../core/config/app_config.dart';
+import '../../../../core/network/http_client.dart';
 
 import '../../domain/models/enrolled_student_model.dart';
 import '../../domain/models/user_profile_model.dart';
@@ -9,7 +10,8 @@ class EnrollmentService {
   final http.Client _client;
   final String _baseUrl = AppConfig.apiBaseUrl;
 
-  EnrollmentService({http.Client? client}) : _client = client ?? http.Client();
+  EnrollmentService({http.Client? client}) 
+      : _client = client ?? HttpClientFactory.createClient();
 
   Future<List<EnrolledStudent>> getEnrolledStudents(int subjectId, String token) async {
     try {
@@ -34,7 +36,7 @@ class EnrollmentService {
 
   Future<void> enrollInSubject(String userId, String subjectId, String accessCode, String token) async {
     try {
-      final response = await http.post(
+      final response = await _client.post(
         Uri.parse('$_baseUrl/inscripciones/'),
         headers: {
           'Authorization': 'Bearer $token',
