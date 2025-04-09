@@ -26,6 +26,8 @@ from enum import Enum
 from typing import Optional
 from abc import ABC, abstractmethod
 import base64
+from services.ocr_service import OCRServiceFactory, QWEN3BOCRService, AzureOCRService, OllamaGemma3OCRService
+from services.evaluador_service import construir_prompt, EvaluadorFactory, EvaluadorIA
 
 router = APIRouter()
 
@@ -33,13 +35,6 @@ router = APIRouter()
 # Crear un modelo para la entrega
 class EntregaCreate(BaseModel):
     textoOcr: str
-
-
-class ModeloIA(str, Enum):
-    GEMINI = "gemini"
-    LLAMA = "llama"
-    GPT = "gpt"
-
 
 @router.get("/actividad/{actividad_id}", response_model=List[EntregaResponse])
 async def obtener_entregas_actividad(
@@ -338,8 +333,8 @@ async def process_image_ocr_uco(
     - HTTPException(403): Si el usuario no es profesor ni alumno
     - HTTPException(500): Si hay un error al procesar la imagen en el servidor OCR
     """
-    # Usar el servicio OCR de la UCO (QWEN3B) a través del Factory
-    ocr_service = QWEN3BOCRService()
+    # Usar el servicio OCR de la UCO (QWEN3B) a través del Factory de ocr_service
+    ocr_service = OCRServiceFactory.get_ocr_service()
     return await ocr_service.process_image(image, current_user)
 
 
@@ -927,6 +922,7 @@ async def evaluar_texto(
     
     try:
         # Crear el evaluador según la configuración
+        # Crear el evaluador según la factory del evaluador_service
         evaluador = EvaluadorFactory.crear_evaluador()
         
         # Preparar el prompt
@@ -947,22 +943,6 @@ async def evaluar_texto(
         print(f"Error detallado: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error al evaluar la entrega: {str(e)}")
 
-def construir_prompt(actividad: Actividad, solucion: str) -> str:
-    prompt = (
-        f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback "
-        f"constructivo, pero muy breve y quiero que también me des la nota de la entrega en formato: "
-        f"Nota: n/10. No uses Markdown, solo texto plano. La actividad es {actividad.titulo} el enunciado es el siguiente: "
-        f"{actividad.descripcion}. La solución que se proporciona es: {solucion}. "
-        f"Recuerda, sé estricto con la nota, no seas tan generoso si está mal, si hace algo que no se pide, o no se cumple el enunciado indicalo y disminuye la nota, pero si lo hace bien, no disminuyas la nota y ponle un 10, aunque haya algunos aspectos no muy relevantes a mejorar"
-    )
-    
-    if actividad.lenguaje_programacion:
-        prompt += f" La solución es un fragmento de código, debe estar en {actividad.lenguaje_programacion}. Cuando me des la corrección, nunca me des el código corregido, solo el feedback. Si el código no compila por errores graves, suspende la nota, si no compila por errores menores, disminuye la nota. (No tengas en cuenta que falten incluir bibliotecas, solo evalúa el código que se proporciona)"
-    if actividad.parametros_evaluacion:
-        prompt += f" Los criterios que tendrás en cuenta para evaluar la solución son: {actividad.parametros_evaluacion}, si no se cumple el enunciado y los criterios de evaluación indicalo y penaliza la nota"
-    
-    #print(prompt)
-    return prompt
 
 @router.get("/alumno/{alumno_id}/asignatura/{asignatura_id}", response_model=List[EntregaResponse])
 async def obtener_entregas_alumno_asignatura(
@@ -1089,151 +1069,3 @@ async def descargar_imagen_entrega(
             "Content-Disposition": f'attachment; filename="{entrega.nombre_archivo or "imagen"}"'
         }
     )
-
-# Clase abstracta para servicios OCR
-class OCRService(ABC):
-    @abstractmethod
-    async def process_image(self, image: UploadFile, current_user: Usuario) -> str:
-        """Procesa una imagen y retorna el texto extraído"""
-        pass
-
-# Implementación del OCR de la UCO
-class QWEN3BOCRService(OCRService):
-    async def process_image(self, image: UploadFile, current_user: Usuario) -> str:
-        # Comprobar que el usuario está logueado
-        if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No tienes permiso para procesar imágenes OCR"
-            )
-            
-        files = {"image": (image.filename, image.file, image.content_type)}
-        # Obtener la IP del servicio OCR desde variables de entorno
-        ip_ocr = os.getenv("IP_OCR")
-        response = requests.post(f"http://{ip_ocr}:8000/predict/", files=files)
-        
-        # devolver el string de la respuesta que está dentro de prediction en el json
-        if response.status_code == 200:
-            return response.json()["prediction"]
-        else:
-            raise HTTPException(status_code=500, detail=f"Error al procesar la imagen: {response.text}")
-
-# Implementación del OCR de Azure
-class AzureOCRService(OCRService):
-    async def process_image(self, image: UploadFile, current_user: Usuario) -> str:
-        # Comprobar que el usuario está logueado
-        if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No tienes permiso para procesar imágenes OCR"
-            )
-        
-        # Configurar los headers de Azure
-        headers = {
-            'Content-Type': 'application/octet-stream',
-            'Ocp-Apim-Subscription-Key': os.getenv("AZURE_API_KEY", "9TnsLp0OUYoyH25UP7V5n3mb2tSnm54J4WySPu0IKZwEJNY4RnJ7JQQJ99ALAC5RqLJXJ3w3AAAFACOGHcqc")
-        }
-        
-        try:
-            # Enviar la imagen como datos binarios
-            response = requests.post(
-                os.getenv("AZURE_VISION_ENDPOINT", "https://pruebarafagvision.cognitiveservices.azure.com/vision/v3.2/read/analyze"),
-                headers=headers,
-                data=await image.read()  # Enviar los bytes directamente
-            )
-            
-            response.raise_for_status()  # Lanzar excepción si hay error
-            
-            # Obtener la URL de operación del header
-            operation_url = response.headers["Operation-Location"]
-            
-            # Esperar a que el análisis termine
-            analysis_result = None
-            while True:
-                result_response = requests.get(
-                    operation_url,
-                    headers={'Ocp-Apim-Subscription-Key': os.getenv("AZURE_API_KEY", "9TnsLp0OUYoyH25UP7V5n3mb2tSnm54J4WySPu0IKZwEJNY4RnJ7JQQJ99ALAC5RqLJXJ3w3AAAFACOGHcqc")}
-                )
-                result = result_response.json()
-                
-                if result.get("status") not in ['notStarted', 'running']:
-                    analysis_result = result
-                    break
-                    
-                await asyncio.sleep(1)
-                
-            texto = analysis_result.get("analyzeResult", {}).get("readResults", [{}])[0].get("lines", [])
-            texto = "\n".join([line.get("text", "") for line in texto])
-            
-            return texto
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error al procesar la imagen: {str(e)}")
-        
-class OllamaGemma3OCRService(OCRService):
-    async def process_image(self, image: UploadFile, current_user: Usuario) -> str:
-        try:
-            # Comprobar que el usuario está logueado
-            if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="No tienes permiso para procesar imágenes OCR"
-                )
-                
-            # Configurar la URL de tu API Multi-LLM
-            api_url = os.getenv("OLLAMA_API_URL", "http://localhost:8001")
-            
-            # Leer el contenido de la imagen y codificarlo en base64
-            image_content = await image.read()
-            image_base64 = base64.b64encode(image_content).decode('utf-8')
-            
-            # Hacer la petición a tu API
-            response = requests.post(
-                f"{api_url}/chat/gemma3",
-                json={
-                    "model": "gemma3",  # Usar el modelo gemma3
-                    "prompt": "Transcribe el siguiente texto de la imagen, no añadas ningún texto adicional, solo el texto de la imagen en texto plano. Probablemente estará en español:",
-                    "images": [image_base64],  # Enviar la imagen codificada en base64
-                    "max_tokens": 1024,  # Parámetros predeterminados
-                    "temperature": 0.7,
-                    "top_p": 0.6,
-                    "top_k": 30
-                }
-            )
-            
-            response.raise_for_status()  # Lanzar excepción si hay error
-            
-            # Extraer la respuesta del formato de tu API
-            response_data = response.json()
-            response_text = response_data.get("response", "")
-            
-            return response_text
-            
-        except Exception as e:
-            print(f"Error en Ollama API: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Error al procesar la imagen con Ollama: {str(e)}")
-
-        
-# Factory para crear servicios OCR
-class OCRServiceFactory:
-    _services = {
-        "azure": AzureOCRService,
-        "qwen3b": QWEN3BOCRService,
-        "ollamaGemma3": OllamaGemma3OCRService,
-        
-    }
-    
-    @classmethod
-    def get_ocr_service(cls) -> OCRService:
-        # Obtener el servicio OCR configurado en las variables de entorno
-        # Por defecto, usar el servicio de la UCO
-        ocr_service = os.getenv("OCR_SERVICE", "ollamaGemma3").lower()
-        
-        # Obtener la clase de servicio
-        service_class = cls._services.get(ocr_service)
-        if not service_class:
-            # Si no se encuentra el servicio, usar el servicio de la UCO por defecto
-            print(f"Servicio OCR '{ocr_service}' no encontrado, usando OllamaGemma3 por defecto")
-            service_class = OllamaGemma3OCRService
-            
-        # Instanciar y retornar el servicio
-        return service_class()
