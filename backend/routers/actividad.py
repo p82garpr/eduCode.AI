@@ -150,38 +150,7 @@ async def obtener_actividades_asignatura(
     actividades = result.scalars().all()
     
     return actividades
-"""
-@router.get("/pendientes", response_model=List[ActividadResponse])
-async def obtener_actividades_pendientes(
-    db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user)
-):
-    # Solo para alumnos
-    if current_user.tipo_usuario != TipoUsuario.ALUMNO:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Esta funcionalidad es solo para alumnos"
-        )
-    
-    # Obtener actividades de asignaturas donde el alumno está inscrito
-    # y que aún no han sido entregadas
-    query = (
-        select(Actividad)
-        .join(Actividad.asignatura)
-        .join(Asignatura.inscripciones)
-        .outerjoin(Actividad.entregas)
-        .where(
-            Inscripcion.alumno_id == current_user.id,
-            Actividad.fecha_entrega >= datetime.now(),
-            Entrega.id.is_(None)
-        )
-        .options(selectinload(Actividad.asignatura))
-    )
-    result = await db.execute(query)
-    actividades = result.scalars().all()
-    
-    return actividades
-"""
+
 @router.delete("/{actividad_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def eliminar_actividad(
     actividad_id: int,

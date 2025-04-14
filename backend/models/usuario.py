@@ -26,6 +26,7 @@ class Usuario(Base):
     reset_tokens = relationship("PasswordResetToken", back_populates="usuario")
 
 class PasswordResetToken(Base):
+    """Clase para gestionar los tokens de restablecimiento de contraseña"""
     __tablename__ = "password_reset_tokens"
     
     id = Column(Integer, primary_key=True, index=True)
