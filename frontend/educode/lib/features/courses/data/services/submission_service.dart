@@ -8,6 +8,14 @@ import '../../../../core/network/http_client.dart';
 import '../../domain/models/submission_model.dart';
 import 'package:http_parser/http_parser.dart';
 
+class SubmissionException implements Exception {
+  final String message;
+  SubmissionException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 class SubmissionService {
   final http.Client _client;
   final String _baseUrl = AppConfig.apiBaseUrl;
@@ -27,11 +35,14 @@ class SubmissionService {
       if (response.statusCode == 200) {
         final List<dynamic> jsonList = json.decode(utf8.decode(response.bodyBytes));  
         return jsonList.map((json) => Submission.fromJson(json)).toList();
+      } else if (response.statusCode == 404) {
+        throw SubmissionException('No se encontraron entregas para esta actividad');
       } else {
-        throw Exception('Error al obtener las entregas: ${response.statusCode}');
+        throw SubmissionException('No pudimos obtener las entregas de la actividad');
       }
     } catch (e) {
-      throw Exception('Error de conexión: ${e.toString()}');
+      if (e is SubmissionException) rethrow;
+      throw SubmissionException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 
@@ -45,16 +56,23 @@ class SubmissionService {
         },
         body: jsonEncode({
           'calificacion': grade,
-          'comentarios': "Evaluado manualmente por el profesor", // Para que se tenga en cuenta que es evaluado manualmente por el profesor
+          'comentarios': "Evaluado manualmente por el profesor",
         }),
       );
 
-      if (response.statusCode != 200) {
+      if (response.statusCode == 200) {
+        return;
+      } else if (response.statusCode == 404) {
+        throw SubmissionException('No se encontró la entrega especificada');
+      } else if (response.statusCode == 403) {
+        throw SubmissionException('No tienes permisos para calificar esta entrega');
+      } else {
         final error = json.decode(utf8.decode(response.bodyBytes));
-        throw Exception(error['detail'] ?? 'Error al calificar la entrega');
+        throw SubmissionException(error['detail'] ?? 'No pudimos calificar la entrega');
       }
     } catch (e) {
-      throw Exception('Error al calificar la entrega: ${e.toString()}');
+      if (e is SubmissionException) rethrow;
+      throw SubmissionException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 
@@ -62,7 +80,6 @@ class SubmissionService {
       try {
         final response = await _client.get(
           Uri.parse('$_baseUrl/entregas/$entregaId'),
-
           headers: {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer $token',
@@ -73,13 +90,15 @@ class SubmissionService {
           final decodedData = json.decode(utf8.decode(response.bodyBytes));
           return Submission.fromJson(decodedData);
         } else if (response.statusCode == 404) {
-          return null; // No hay entrega
+          return null;
+        } else if (response.statusCode == 403) {
+          throw SubmissionException('No tienes permisos para ver esta entrega');
         } else {
-          throw Exception('Error al obtener la entrega: ${response.statusCode}');
+          throw SubmissionException('No pudimos obtener la información de la entrega');
         }
       } catch (e) {
-        debugPrint('Error en SubjectsService.getStudentSubmission: $e');
-        rethrow;
+        if (e is SubmissionException) rethrow;
+        throw SubmissionException('Error de conexión. Por favor, verifica tu internet');
       } 
     }
 
@@ -96,12 +115,16 @@ class SubmissionService {
       if (response.statusCode == 200) {
         final decodedData = json.decode(utf8.decode(response.bodyBytes));
         return Submission.fromJson(decodedData);
+      } else if (response.statusCode == 404) {
+        return null;
+      } else if (response.statusCode == 403) {
+        throw SubmissionException('No tienes permisos para ver esta entrega');
       } else {
-        throw Exception('Error al obtener la entrega: ${response.statusCode}');
+        throw SubmissionException('No pudimos obtener la información de la entrega');
       }
     } catch (e) {
-      debugPrint('Error en SubjectsService.getStudentSubmission2: $e');
-      rethrow;
+      if (e is SubmissionException) rethrow;
+      throw SubmissionException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 
@@ -132,19 +155,22 @@ class SubmissionService {
         );
       }
 
-      // Enviar la petición usando el cliente seguro
       final streamedResponse = await httpClient.send(request);
       final response = await http.Response.fromStream(streamedResponse);
 
-      if (response.statusCode != 200 && response.statusCode != 201) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return Submission.fromJson(json.decode(response.body));
+      } else if (response.statusCode == 403) {
+        throw SubmissionException('No tienes permisos para realizar esta entrega');
+      } else if (response.statusCode == 400) {
         final error = json.decode(response.body);
-        throw Exception(error['detail'] ?? 'Error al enviar la entrega: ${response.statusCode}');
+        throw SubmissionException(error['detail'] ?? 'La entrega no cumple con los requisitos necesarios');
+      } else {
+        throw SubmissionException('No pudimos procesar tu entrega. Por favor, inténtalo de nuevo');
       }
-      
-      return Submission.fromJson(json.decode(response.body));
     } catch (e) {
-      debugPrint('Error en SubjectsService.submitActivity: $e');
-      rethrow;
+      if (e is SubmissionException) rethrow;
+      throw SubmissionException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 
@@ -158,11 +184,9 @@ class SubmissionService {
         },
       );
   
-
       if (response.statusCode == 200) {
         final submissionData = jsonDecode(utf8.decode(response.bodyBytes));
         
-        // Obtener los detalles del alumno
         final studentResponse = await _client.get(
           Uri.parse('$_baseUrl/${submissionData['alumno_id']}'),
           headers: {
@@ -177,11 +201,16 @@ class SubmissionService {
         }
 
         return Submission.fromJson(submissionData);
+      } else if (response.statusCode == 404) {
+        throw SubmissionException('No se encontró la entrega especificada');
+      } else if (response.statusCode == 403) {
+        throw SubmissionException('No tienes permisos para ver esta entrega');
       } else {
-        throw Exception('Error al obtener los detalles de la entrega');
+        throw SubmissionException('No pudimos obtener los detalles de la entrega');
       }
     } catch (e) {
-      throw Exception('Error de conexión: $e');
+      if (e is SubmissionException) rethrow;
+      throw SubmissionException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 
@@ -197,14 +226,18 @@ class SubmissionService {
 
       if (response.statusCode == 200) {
         return response.bodyBytes;
+      } else if (response.statusCode == 404) {
+        throw SubmissionException('No se encontró la imagen de la entrega');
+      } else if (response.statusCode == 403) {
+        throw SubmissionException('No tienes permisos para ver esta imagen');
       } else {
-        throw Exception('Error al obtener la imagen de la entrega');
+        throw SubmissionException('No pudimos obtener la imagen de la entrega');
       }
     } catch (e) {
-      throw Exception('Error de conexión: $e');
+      if (e is SubmissionException) rethrow;
+      throw SubmissionException('Error de conexión. Por favor, verifica tu internet');
     }
   }
-
 
   Future<void> evaluateSubmissionWithGemini(int entregaId, String token) async {
     try {
@@ -216,13 +249,19 @@ class SubmissionService {
         },
       );
 
-      if (response.statusCode != 200) {
+      if (response.statusCode == 200) {
+        return;
+      } else if (response.statusCode == 404) {
+        throw SubmissionException('No se encontró la entrega para evaluar');
+      } else if (response.statusCode == 403) {
+        throw SubmissionException('No tienes permisos para evaluar esta entrega');
+      } else {
         final error = json.decode(utf8.decode(response.bodyBytes));
-        throw Exception(error['detail'] ?? 'Error al evaluar la entrega: ${response.statusCode}');
+        throw SubmissionException(error['detail'] ?? 'No pudimos evaluar la entrega');
       }
     } catch (e) {
-      debugPrint('Error en SubjectsService.evaluateSubmissionWithGemini: $e');
-      rethrow;
+      if (e is SubmissionException) rethrow;
+      throw SubmissionException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 
@@ -234,31 +273,31 @@ class SubmissionService {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
         },
-      
       );
 
       if (response.statusCode == 200) {
         final List<dynamic> decodedData = json.decode(utf8.decode(response.bodyBytes));
         return decodedData.map((json) => Submission.fromJson(json)).toList();
+      } else if (response.statusCode == 404) {
+        throw SubmissionException('No se encontraron entregas para este estudiante en la asignatura');
+      } else if (response.statusCode == 403) {
+        throw SubmissionException('No tienes permisos para ver estas entregas');
       } else {
-        throw Exception('Error al obtener las entregas: ${response.statusCode}');
+        throw SubmissionException('No pudimos obtener las entregas del estudiante');
       }
     } catch (e) {
-      debugPrint('Error en SubjectsService.getStudentSubmissions: $e');
-      rethrow;
-      }
-      
+      if (e is SubmissionException) rethrow;
+      throw SubmissionException('Error de conexión. Por favor, verifica tu internet');
+    }
   }
 
   Future<String> processImageOCR(File image, String token) async {
     try {
-      // Crear un cliente HTTP que acepte certificados autofirmados
       final httpClient = HttpClientFactory.createClient();
       
-      // Crear el request multipart
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse('$_baseUrl/entregas/ocr/process-uco'),
+        Uri.parse('$_baseUrl/entregas/ocr/process'),
       );
 
       // Añadir el token de autorización
@@ -280,12 +319,16 @@ class SubmissionService {
       if (response.statusCode == 200) {
         final decodedData = json.decode(response.body);
         return decodedData as String;
+      } else if (response.statusCode == 400) {
+        throw SubmissionException('No se pudo procesar la imagen. Asegúrate de que sea una imagen válida');
+      } else if (response.statusCode == 413) {
+        throw SubmissionException('La imagen es demasiado grande. Por favor, reduce su tamaño');
       } else {
-        throw Exception('Error al procesar la imagen: ${response.statusCode}');
+        throw SubmissionException('No pudimos procesar el texto de la imagen');
       }
     } catch (e) {
-      debugPrint('Error en SubjectsService.processImageOCR: $e');
-      rethrow;
+      if (e is SubmissionException) rethrow;
+      throw SubmissionException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 
@@ -301,11 +344,16 @@ class SubmissionService {
       if (response.statusCode == 200) {
         final data = json.decode(utf8.decode(response.bodyBytes));
         return data['url'];
+      } else if (response.statusCode == 404) {
+        throw SubmissionException('No se encontró la imagen de la entrega');
+      } else if (response.statusCode == 403) {
+        throw SubmissionException('No tienes permisos para ver esta imagen');
       } else {
-        throw Exception('Error al obtener la URL de la imagen: ${response.statusCode}');
+        throw SubmissionException('No pudimos obtener la URL de la imagen');
       }
     } catch (e) {
-      throw Exception('Error de conexión: ${e.toString()}');
+      if (e is SubmissionException) rethrow;
+      throw SubmissionException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 
@@ -321,11 +369,16 @@ class SubmissionService {
 
       if (response.statusCode == 200) {
         return response.bodyBytes;
+      } else if (response.statusCode == 404) {
+        throw SubmissionException('No se encontró la imagen para descargar');
+      } else if (response.statusCode == 403) {
+        throw SubmissionException('No tienes permisos para descargar esta imagen');
       } else {
-        throw Exception('Error al obtener la imagen de la entrega');
+        throw SubmissionException('No pudimos descargar la imagen de la entrega');
       }
     } catch (e) {
-      throw Exception('Error de conexión: $e');
+      if (e is SubmissionException) rethrow;
+      throw SubmissionException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 } 

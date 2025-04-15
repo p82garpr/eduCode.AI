@@ -6,6 +6,14 @@ import '../../../../core/network/http_client.dart';
 
 import '../../domain/models/user_profile_model.dart';
 
+class ProfileException implements Exception {
+  final String message;
+  ProfileException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 class ProfileService {
   final http.Client _client;
   final String _baseUrl = AppConfig.apiBaseUrl;
@@ -23,15 +31,19 @@ class ProfileService {
         },
       );
 
-      if (response.statusCode != 200) {
+      if (response.statusCode == 200) {
+        return UserProfileModel.fromJson(json.decode(utf8.decode(response.bodyBytes)));
+      } else if (response.statusCode == 404) {
+        throw ProfileException('No se encontró el perfil del usuario');
+      } else if (response.statusCode == 403) {
+        throw ProfileException('No tienes permisos para ver este perfil');
+      } else {
         final error = json.decode(utf8.decode(response.bodyBytes));
-        throw Exception(error['detail'] ?? 'Error al obtener el perfil: ${response.statusCode}');
+        throw ProfileException(error['detail'] ?? 'No pudimos obtener el perfil del usuario');
       }
-
-      return UserProfileModel.fromJson(json.decode(utf8.decode(response.bodyBytes)));
     } catch (e) {
-      debugPrint('Error en SubjectsService.getUserProfile: $e');
-      rethrow;
+      if (e is ProfileException) rethrow;
+      throw ProfileException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 } 

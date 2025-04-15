@@ -9,8 +9,9 @@ class SubjectsProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   Subject? _currentSubject;
-  // ignore: unused_field
   List<Subject> _availableSubjects = [];
+  int _retryAttempts = 0;
+  static const int maxRetries = 3;
   
   SubjectsProvider(this._subjectsService);
 
@@ -20,38 +21,58 @@ class SubjectsProvider extends ChangeNotifier {
   String? get error => _error;
   Subject? get currentSubject => _currentSubject;
 
-  // Setter para subjects
-  set subjects(List<Subject> value) {
-    _subjects = value;
+  // Limpiar estado
+  void clearState() {
+    _subjects = [];
+    _error = null;
+    _currentSubject = null;
+    _availableSubjects = [];
+    _retryAttempts = 0;
     notifyListeners();
   }
 
   Future<void> loadSubjects(String userId, String userType, String token) async {
+    if (_isLoading) return; // Evitar múltiples cargas simultáneas
+    
     try {
       _isLoading = true;
       _error = null;
       notifyListeners();
 
-      _subjects = await _subjectsService.getCoursesByUser(userId, userType, token);
+      while (_retryAttempts < maxRetries) {
+        try {
+          _subjects = await _subjectsService.getCoursesByUser(userId, userType, token);
+          _retryAttempts = 0; // Resetear intentos si es exitoso
+          break;
+        } catch (e) {
+          _retryAttempts++;
+          if (_retryAttempts >= maxRetries) {
+            throw e;
+          }
+          await Future.delayed(Duration(seconds: _retryAttempts));
+        }
+      }
+
       _isLoading = false;
       notifyListeners();
     } catch (e) {
-      _error = e.toString();
+      _error = 'Error al cargar las asignaturas. Por favor, inténtalo de nuevo';
       _isLoading = false;
       notifyListeners();
-      throw Exception('Error al cargar las asignaturas: ${e.toString()}');
+      throw Exception(_error);
     }
   }
 
   Future<void> createSubject(Map<String, String> data, String token) async {
     try {
+      _error = null;
       final newSubject = await _subjectsService.createSubject(data, token);
       _subjects = [..._subjects, newSubject];
       notifyListeners();
     } catch (e) {
-      if (kDebugMode) {
-        print('Error en provider: $e');
-      }
+      _error = 'Error al crear la asignatura';
+      notifyListeners();
+      throw Exception(_error);
     }
   }
 
@@ -62,6 +83,7 @@ class SubjectsProvider extends ChangeNotifier {
 
   Future<Subject> updateSubject(int subjectId, Map<String, String> data, String token) async {
     try {
+      _error = null;
       final updatedSubject = await _subjectsService.updateSubject(subjectId, data, token);
       _subjects = _subjects.map((subject) => 
         subject.id == subjectId ? updatedSubject : subject
@@ -69,35 +91,44 @@ class SubjectsProvider extends ChangeNotifier {
       notifyListeners();
       return updatedSubject;
     } catch (e) {
-      throw Exception('Error al actualizar la asignatura: ${e.toString()}');
+      _error = 'Error al actualizar la asignatura';
+      notifyListeners();
+      throw Exception(_error);
     }
   }
 
   Future<Subject> getSubjectDetail(int subjectId, String token) async {
     try {
+      _error = null;
       return await _subjectsService.getSubjectDetail(subjectId, token);
     } catch (e) {
-      throw Exception('Error al cargar los detalles de la asignatura: ${e.toString()}');
+      _error = 'Error al cargar los detalles de la asignatura';
+      notifyListeners();
+      throw Exception(_error);
     }
   }
 
   Future<List<dynamic>> getAvailableSubjects(String token) async {
-    debugPrint('SubjectsProvider: getAvailableSubjects called');
     try {
+      _error = null;
       final subjects = await _subjectsService.getAvailableSubjects(token);
       _availableSubjects = subjects;
       return subjects;
     } catch (e) {
-      debugPrint('SubjectsProvider: Error: $e');
-      rethrow;
+      _error = 'Error al cargar las asignaturas disponibles';
+      notifyListeners();
+      throw Exception(_error);
     }
   }
 
   Future<List<ActivityModel>> getCourseActivities(int courseId, String token) async {
     try {
+      _error = null;
       return await _subjectsService.getCourseActivities(courseId, token);
     } catch (e) {
-      throw Exception('Error al cargar las actividades del curso: ${e.toString()}');
+      _error = 'Error al cargar las actividades del curso';
+      notifyListeners();
+      throw Exception(_error);
     }
   }
 
@@ -117,5 +148,10 @@ class SubjectsProvider extends ChangeNotifier {
       throw Exception('Error al eliminar la asignatura: $e');
     }
   }
-  
+
+  @override
+  void dispose() {
+    clearState();
+    super.dispose();
+  }
 }

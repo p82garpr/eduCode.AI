@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:educode/features/auth/presentation/providers/auth_provider.dart';
+import 'package:educode/features/auth/presentation/views/profile_view.dart';
 
 class EditProfileDialog extends StatefulWidget {
   const EditProfileDialog({super.key});
@@ -54,20 +55,44 @@ class _EditProfileDialogState extends State<EditProfileDialog> with SingleTicker
 
     try {
       final currentUser = context.read<AuthProvider>().currentUser;
-      await context.read<AuthProvider>().updateProfile(
+      final success = await context.read<AuthProvider>().updateProfile(
         nombre: _nombreController.text,
         apellidos: _apellidosController.text,
         email: currentUser?.email ?? '',
         password: _passwordController.text.isEmpty ? null : _passwordController.text,
       );
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Perfil actualizado correctamente'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Navigator.of(context).pop();
+        if (success) {
+          // Forzar actualización de la UI
+          context.read<AuthProvider>().notifyListeners();
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Perfil actualizado correctamente'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          
+          // Esperar un momento para asegurar que la UI se actualice
+          await Future.delayed(const Duration(milliseconds: 100));
+          if (mounted) {
+            Navigator.of(context).pop();
+            // Forzar actualización de la vista del perfil
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (context) => const ProfileView(),
+              ),
+            );
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No se pudo actualizar el perfil. Por favor, inténtalo de nuevo'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {

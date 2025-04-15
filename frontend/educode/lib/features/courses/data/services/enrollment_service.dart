@@ -6,6 +6,14 @@ import '../../../../core/network/http_client.dart';
 import '../../domain/models/enrolled_student_model.dart';
 import '../../domain/models/user_profile_model.dart';
 
+class EnrollmentException implements Exception {
+  final String message;
+  EnrollmentException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 class EnrollmentService {
   final http.Client _client;
   final String _baseUrl = AppConfig.apiBaseUrl;
@@ -26,11 +34,14 @@ class EnrollmentService {
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(utf8.decode(response.bodyBytes));
         return data.map((json) => EnrolledStudent.fromJson(json)).toList();
+      } else if (response.statusCode == 404) {
+        throw EnrollmentException('No se encontró la asignatura');
       } else {
-        throw Exception('Error al obtener los estudiantes matriculados');
+        throw EnrollmentException('No pudimos obtener la lista de estudiantes');
       }
     } catch (e) {
-      throw Exception('Error en el servicio: ${e.toString()}');
+      if (e is EnrollmentException) rethrow;
+      throw EnrollmentException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 
@@ -49,12 +60,22 @@ class EnrollmentService {
         }),
       );
 
-      if (response.statusCode != 200) {
+      if (response.statusCode == 200) {
+        return;
+      } else {
         final error = json.decode(utf8.decode(response.bodyBytes));
-        throw Exception(error['detail'] ?? 'Error al inscribirse en la asignatura');
+        if (response.statusCode == 400) {
+          if (error['detail']?.contains('código de acceso')) {
+            throw EnrollmentException('El código de acceso no es válido');
+          } else if (error['detail']?.contains('ya está matriculado')) {
+            throw EnrollmentException('Ya estás matriculado en esta asignatura');
+          }
+        }
+        throw EnrollmentException(error['detail'] ?? 'No pudimos completar la matrícula');
       }
     } catch (e) {
-      throw Exception('Error al inscribirse en la asignatura: ${e.toString()}');
+      if (e is EnrollmentException) rethrow;
+      throw EnrollmentException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 
@@ -68,11 +89,16 @@ class EnrollmentService {
         },
       );
 
-      if (response.statusCode != 200 && response.statusCode != 204) {
-        throw Exception('Error al cancelar la matrícula');
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return;
+      } else if (response.statusCode == 404) {
+        throw EnrollmentException('No estás matriculado en esta asignatura');
+      } else {
+        throw EnrollmentException('No pudimos cancelar tu matrícula. Por favor, inténtalo de nuevo');
       }
     } catch (e) {
-      throw Exception('Error en el servicio: ${e.toString()}');
+      if (e is EnrollmentException) rethrow;
+      throw EnrollmentException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 
@@ -89,11 +115,14 @@ class EnrollmentService {
       if (response.statusCode == 200) {
         final data = json.decode(utf8.decode(response.bodyBytes));
         return UserProfileModel.fromJson(data);
+      } else if (response.statusCode == 404) {
+        throw EnrollmentException('No se encontró el perfil del usuario');
       } else {
-        throw Exception('Error al obtener el perfil del usuario');
+        throw EnrollmentException('No pudimos obtener el perfil del usuario');
       }
     } catch (e) {
-      throw Exception('Error en el servicio: ${e.toString()}');
+      if (e is EnrollmentException) rethrow;
+      throw EnrollmentException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 } 

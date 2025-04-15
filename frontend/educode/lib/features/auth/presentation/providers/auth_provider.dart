@@ -11,6 +11,8 @@ class AuthProvider extends ChangeNotifier {
   String? _token;
   bool _isLoading = false;
   String? _error;
+  int _retryAttempts = 0;
+  static const int maxRetryAttempts = 3;
 
   AuthProvider(this._authService, this._secureStorage);
 
@@ -19,7 +21,7 @@ class AuthProvider extends ChangeNotifier {
   String? get token => _token;
   bool get isLoading => _isLoading;
   String? get error => _error;
-  bool get isAuthenticated => _currentUser != null;
+  bool get isAuthenticated => _currentUser != null && _token != null;
 
   Future<bool> login(String email, String password) async {
     try {
@@ -28,9 +30,13 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
 
       _token = await _authService.login(email, password);
-      _currentUser = await _authService.getUserInfo(_token!);
+      if (_token == null) {
+        throw AuthException('No se pudo obtener el token de autenticación');
+      }
 
-      // Guardar toda la información necesaria en el almacenamiento seguro
+      _currentUser = await _getUserInfoWithRetry(_token!);
+
+      // Guardar información en el almacenamiento seguro
       await _secureStorage.saveToken(_token!);
       await _secureStorage.saveUserInfo(
         id: _currentUser!.id.toString(),
@@ -41,6 +47,7 @@ class AuthProvider extends ChangeNotifier {
       );
 
       _isLoading = false;
+      _retryAttempts = 0;
       notifyListeners();
       return true;
     } catch (e) {
@@ -54,11 +61,11 @@ class AuthProvider extends ChangeNotifier {
   Future<void> logout() async {
     _currentUser = null;
     _token = null;
+    _retryAttempts = 0;
     await _secureStorage.clearAll();
     notifyListeners();
   }
 
-  // Método para verificar si hay una sesión guardada al iniciar la app
   Future<bool> checkAuthStatus() async {
     try {
       final token = await _secureStorage.getToken();
@@ -69,27 +76,52 @@ class AuthProvider extends ChangeNotifier {
 
       try {
         _token = token;
-        _currentUser = await _authService.getUserInfo(token);
+        _currentUser = await _getUserInfoWithRetry(token);
         
-        // Si llegamos aquí, el token es válido
         notifyListeners();
         return true;
       } catch (e) {
-        // Si hay un error al obtener la información del usuario,
-        // asumimos que el token expiró o es inválido
-        _token = null;
-        _currentUser = null;
-        await _secureStorage.clearAll();
+        // Solo limpiar si el error es de autenticación
+        if (e is AuthException && 
+            (e.toString().contains('401') || e.toString().contains('no autorizado'))) {
+          await _handleAuthError();
+          return false;
+        }
+        
+        // Si es error de conexión, mantener el token y reintentar después
+        _error = e.toString();
         notifyListeners();
         return false;
       }
     } catch (e) {
-      _token = null;
-      _currentUser = null;
-      await _secureStorage.clearAll();
-      notifyListeners();
+      await _handleAuthError();
       return false;
     }
+  }
+
+  Future<UserModel> _getUserInfoWithRetry(String token) async {
+    while (_retryAttempts < maxRetryAttempts) {
+      try {
+        final user = await _authService.getUserInfo(token);
+        _retryAttempts = 0;
+        return user;
+      } catch (e) {
+        _retryAttempts++;
+        if (_retryAttempts >= maxRetryAttempts) {
+          rethrow;
+        }
+        await Future.delayed(Duration(seconds: _retryAttempts));
+      }
+    }
+    throw AuthException('No se pudo obtener la información del usuario después de varios intentos');
+  }
+
+  Future<void> _handleAuthError() async {
+    _token = null;
+    _currentUser = null;
+    await _secureStorage.clearAll();
+    _retryAttempts = 0;
+    notifyListeners();
   }
 
   Future<bool> register(String email, String password, String name, String lastName, String userType) async {

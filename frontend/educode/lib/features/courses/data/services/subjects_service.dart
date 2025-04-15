@@ -6,6 +6,14 @@ import '../../../../core/network/http_client.dart';
 
 import '../../domain/models/subject_model.dart';
 
+class SubjectException implements Exception {
+  final String message;
+  SubjectException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 class SubjectsService {
   final http.Client _client;
   final String _baseUrl = AppConfig.apiBaseUrl;
@@ -30,11 +38,16 @@ class SubjectsService {
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(utf8.decode(response.bodyBytes));
         return data.map((json) => Subject.fromJson(json)).toList();
+      } else if (response.statusCode == 404) {
+        throw SubjectException('No se encontraron asignaturas asociadas a tu cuenta');
+      } else if (response.statusCode == 403) {
+        throw SubjectException('No tienes permisos para ver estas asignaturas');
       } else {
-        throw Exception('Error al obtener los cursos: ${response.body}');
+        throw SubjectException('No pudimos obtener tus asignaturas');
       }
     } catch (e) {
-      throw Exception('Error de conexión: $e');
+      if (e is SubjectException) rethrow;
+      throw SubjectException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 
@@ -51,11 +64,17 @@ class SubjectsService {
 
       if (response.statusCode == 201) {
         return Subject.fromJson(json.decode(response.body));
+      } else if (response.statusCode == 403) {
+        throw SubjectException('No tienes permisos para crear asignaturas');
+      } else if (response.statusCode == 400) {
+        final error = json.decode(response.body);
+        throw SubjectException(error['detail'] ?? 'Los datos de la asignatura no son válidos');
       } else {
-        throw Exception('Error al crear la asignatura');
+        throw SubjectException('No pudimos crear la asignatura');
       }
     } catch (e) {
-      throw Exception('Error en el servicio: ${e.toString()}');
+      if (e is SubjectException) rethrow;
+      throw SubjectException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 
@@ -72,11 +91,19 @@ class SubjectsService {
 
       if (response.statusCode == 200) {
         return Subject.fromJson(json.decode(response.body));
+      } else if (response.statusCode == 404) {
+        throw SubjectException('No se encontró la asignatura que intentas modificar');
+      } else if (response.statusCode == 403) {
+        throw SubjectException('No tienes permisos para modificar esta asignatura');
+      } else if (response.statusCode == 400) {
+        final error = json.decode(response.body);
+        throw SubjectException(error['detail'] ?? 'Los datos de actualización no son válidos');
       } else {
-        throw Exception('Error al actualizar la asignatura');
+        throw SubjectException('No pudimos actualizar la asignatura');
       }
     } catch (e) {
-      throw Exception('Error en el servicio: ${e.toString()}');
+      if (e is SubjectException) rethrow;
+      throw SubjectException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 
@@ -92,11 +119,16 @@ class SubjectsService {
 
       if (response.statusCode == 200) {
         return Subject.fromJson(json.decode(utf8.decode(response.bodyBytes)));
+      } else if (response.statusCode == 404) {
+        throw SubjectException('No se encontró la asignatura solicitada');
+      } else if (response.statusCode == 403) {
+        throw SubjectException('No tienes permisos para ver esta asignatura');
       } else {
-        throw Exception('Error al obtener los detalles de la asignatura');
+        throw SubjectException('No pudimos obtener los detalles de la asignatura');
       }
     } catch (e) {
-      throw Exception('Error en el servicio: ${e.toString()}');
+      if (e is SubjectException) rethrow;
+      throw SubjectException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 
@@ -113,11 +145,14 @@ class SubjectsService {
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(utf8.decode(response.bodyBytes));
         return data.map((json) => Subject.fromJson(json)).toList();
+      } else if (response.statusCode == 403) {
+        throw SubjectException('No tienes permisos para ver las asignaturas disponibles');
       } else {
-        throw Exception('Error al obtener las asignaturas disponibles');
+        throw SubjectException('No pudimos obtener las asignaturas disponibles');
       }
     } catch (e) {
-      throw Exception('Error en el servicio: ${e.toString()}');
+      if (e is SubjectException) rethrow;
+      throw SubjectException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 
@@ -132,11 +167,16 @@ class SubjectsService {
 
       if (response.statusCode == 200) {
         return response.body;
+      } else if (response.statusCode == 404) {
+        throw SubjectException('No se encontró la asignatura para exportar');
+      } else if (response.statusCode == 403) {
+        throw SubjectException('No tienes permisos para exportar esta asignatura');
       } else {
-        throw Exception('Error al descargar el CSV de la asignatura');
+        throw SubjectException('No pudimos descargar el archivo CSV de la asignatura');
       }
     } catch (e) {
-      throw Exception('Error en el servicio: ${e.toString()}');
+      if (e is SubjectException) rethrow;
+      throw SubjectException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 
@@ -153,11 +193,16 @@ class SubjectsService {
       if (response.statusCode == 200) {
         final List<dynamic> jsonList = json.decode(utf8.decode(response.bodyBytes));
         return jsonList.map((json) => ActivityModel.fromJson(json)).toList();
+      } else if (response.statusCode == 404) {
+        throw SubjectException('No se encontraron actividades para esta asignatura');
+      } else if (response.statusCode == 403) {
+        throw SubjectException('No tienes permisos para ver las actividades de esta asignatura');
       } else {
-        throw Exception('Error al cargar las actividades del curso');
+        throw SubjectException('No pudimos cargar las actividades del curso');
       }
     } catch (e) {
-      throw Exception('Error de conexión: ${e.toString()}');
+      if (e is SubjectException) rethrow;
+      throw SubjectException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 
@@ -170,11 +215,18 @@ class SubjectsService {
         },
       );
 
-      if (response.statusCode != 200 && response.statusCode != 204) {
-        throw Exception('Error al eliminar la asignatura');
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return;
+      } else if (response.statusCode == 404) {
+        throw SubjectException('No se encontró la asignatura que intentas eliminar');
+      } else if (response.statusCode == 403) {
+        throw SubjectException('No tienes permisos para eliminar esta asignatura');
+      } else {
+        throw SubjectException('No pudimos eliminar la asignatura');
       }
     } catch (e) {
-      throw Exception('Error de conexión: $e');
+      if (e is SubjectException) rethrow;
+      throw SubjectException('Error de conexión. Por favor, verifica tu internet');
     }
   }
 }

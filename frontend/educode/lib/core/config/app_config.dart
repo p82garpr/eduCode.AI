@@ -1,5 +1,5 @@
 class AppConfig {
-  // URLs
+  // URLs de la API del ba
   static const String apiBaseUrl = 'https://10.0.2.2:8000/api/v1';
   
   // Para probar con diferentes configuraciones, descomenta una de estas opciones:
