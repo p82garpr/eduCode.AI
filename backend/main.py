@@ -9,19 +9,19 @@ import uvicorn
 import os
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI): # Inicializa la base de datos
     # Código que se ejecuta al iniciar
     await init_db()
     yield
     # Código que se ejecuta al cerrar (si es necesario)
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan) # Inicializa la base de datos
 
 # Configurar CORS para permitir peticiones desde cualquier origen
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Permitir todos los orígenes
-    allow_credentials=True,
+    allow_credentials=True, # Permitir credenciales
     allow_methods=["*"],  # Permitir todos los métodos
     allow_headers=["*"],  # Permitir todos los headers
 )

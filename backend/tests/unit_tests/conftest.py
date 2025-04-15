@@ -12,8 +12,9 @@ from httpx import AsyncClient
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-# Añadir el directorio raíz al path de Python
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Añadir el directorio raíz del backend al path
+backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, backend_dir)
 
 from database import Base, get_db
 from main import app

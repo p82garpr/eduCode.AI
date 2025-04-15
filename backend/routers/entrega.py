@@ -287,6 +287,20 @@ async def obtener_imagen_entrega(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Obtiene la imagen de una entrega específica.
+    El profesor de la asignatura y el alumno que realizó la entrega pueden acceder a la imagen.
+
+    Parameters:
+    - entrega_id (int): ID de la entrega
+
+    Returns:
+    - Response: Imagen de la entrega con el content-type apropiado
+
+    Raises:
+    - HTTPException(404): Si la entrega o la imagen no existe
+    - HTTPException(403): Si el usuario no tiene permisos
+    """
     # Obtener la entrega
     query = select(Entrega).where(Entrega.id == entrega_id)
     result = await db.execute(query)
@@ -304,6 +318,18 @@ async def obtener_imagen_entrega(
             detail="La entrega no tiene imagen"
         )
     
+    # Verificar permisos
+    if current_user.tipo_usuario == TipoUsuario.ALUMNO and entrega.alumno_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para ver esta imagen"
+        )
+    elif current_user.tipo_usuario == TipoUsuario.PROFESOR and entrega.actividad.asignatura.profesor_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para ver esta imagen"
+        )
+    
     # Determinar el tipo de contenido basado en el tipo_imagen
     content_type = f"image/{entrega.tipo_imagen}" if entrega.tipo_imagen else "image/jpeg"
     
@@ -313,50 +339,24 @@ async def obtener_imagen_entrega(
     )
 
 
-# Endpoint para procesar la imagen con OCR usando Gradio
-@router.post("/ocr/process-uco", response_model=str)
-async def process_image_ocr_uco(
+@router.post("/ocr/process-azure", response_model=str)
+async def process_image_ocr_azure(
     image: UploadFile = File(...),
     current_user: Usuario = Depends(get_current_user)
 ):
     """
-    Procesa una imagen usando el servicio OCR de la UCO.
-    Envía la imagen al servidor OCR de la UCO y devuelve el texto extraído.
-
-    Parameters:
-    - image (UploadFile): Imagen a procesar (JPEG, PNG, GIF o JPG)
-
-    Returns:
-    - str: Texto extraído de la imagen
-
-    Raises:
-    - HTTPException(403): Si el usuario no es profesor ni alumno
-    - HTTPException(500): Si hay un error al procesar la imagen en el servidor OCR
-    """
-    # Usar el servicio OCR de la UCO (QWEN3B) a través del Factory de ocr_service
-    ocr_service = OCRServiceFactory.get_ocr_service()
-    return await ocr_service.process_image(image, current_user)
-
-
-   
-
-@router.post("/ocr/process-azure", response_model=str)
-async def process_image_ocr_azure(
-    image: UploadFile = File(...),  
-    current_user: Usuario = Depends(get_current_user)
-):
-    """
     Procesa una imagen usando el servicio OCR de Azure Computer Vision.
-    Envía la imagen al servicio de Azure y espera el resultado del análisis.
+    Extrae el texto de la imagen proporcionada.
 
     Parameters:
-    - image (UploadFile): Imagen a procesar (JPEG, PNG, GIF o JPG)
+    - image (UploadFile): Archivo de imagen a procesar (JPEG, PNG, GIF o JPG)
 
     Returns:
     - str: Texto extraído de la imagen
 
     Raises:
-    - HTTPException(403): Si el usuario no es profesor ni alumno
+    - HTTPException(403): Si el usuario no tiene permisos
+    - HTTPException(400): Si el formato de imagen no es válido
     - HTTPException(500): Si hay un error en el procesamiento con Azure
     """
     # Usar el servicio OCR de Azure a través del Factory
@@ -365,21 +365,22 @@ async def process_image_ocr_azure(
 
 @router.post("/ocr/process-ollama", response_model=str)
 async def process_image_ocr_ollama(
-    image: UploadFile = File(...),  
+    image: UploadFile = File(...),
     current_user: Usuario = Depends(get_current_user)
 ):
     """
-    Procesa una imagen usando el servicio OCR de Ollama con Gemma3.
-    Envía la imagen codificada en base64 al servicio de Ollama y espera el resultado del análisis.
+    Procesa una imagen usando el servicio OCR de Ollama.
+    Extrae el texto de la imagen proporcionada usando el modelo Gemma3.
 
     Parameters:
-    - image (UploadFile): Imagen a procesar (JPEG, PNG, GIF o JPG)
+    - image (UploadFile): Archivo de imagen a procesar (JPEG, PNG, GIF o JPG)
 
     Returns:
     - str: Texto extraído de la imagen
 
     Raises:
-    - HTTPException(403): Si el usuario no es profesor ni alumno
+    - HTTPException(403): Si el usuario no tiene permisos
+    - HTTPException(400): Si el formato de imagen no es válido
     - HTTPException(500): Si hay un error en el procesamiento con Ollama
     """
     # Usar el servicio OCR de Ollama a través del Factory
@@ -392,18 +393,19 @@ async def process_image_ocr(
     current_user: Usuario = Depends(get_current_user)
 ):
     """
-    Procesa una imagen usando el servicio OCR configurado por defecto.
-    El servicio OCR se determina mediante la variable de entorno OCR_SERVICE.
+    Procesa una imagen usando el servicio OCR predeterminado configurado.
+    El servicio específico se determina mediante la configuración del sistema.
 
     Parameters:
-    - image (UploadFile): Imagen a procesar (JPEG, PNG, GIF o JPG)
+    - image (UploadFile): Archivo de imagen a procesar (JPEG, PNG, GIF o JPG)
 
     Returns:
     - str: Texto extraído de la imagen
 
     Raises:
-    - HTTPException(403): Si el usuario no es profesor ni alumno
-    - HTTPException(500): Si hay un error al procesar la imagen
+    - HTTPException(403): Si el usuario no tiene permisos
+    - HTTPException(400): Si el formato de imagen no es válido
+    - HTTPException(500): Si hay un error en el procesamiento OCR
     """
     # Obtener el servicio OCR a través del Factory
     ocr_service = OCRServiceFactory.get_ocr_service()
@@ -415,6 +417,20 @@ async def export_submissions_csv(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Exporta todas las entregas de una actividad a un archivo CSV.
+    Solo disponible para profesores.
+
+    Parameters:
+    - actividad_id (int): ID de la actividad
+
+    Returns:
+    - StreamingResponse: Archivo CSV con las entregas
+
+    Raises:
+    - HTTPException(403): Si el usuario no es profesor
+    - HTTPException(404): Si la actividad no existe
+    """
     if current_user.tipo_usuario != TipoUsuario.PROFESOR:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -495,6 +511,21 @@ async def obtener_entregas_alumno_actividad(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Obtiene la entrega de un alumno para una actividad específica.
+    Los profesores pueden ver cualquier entrega, los alumnos solo las suyas.
+
+    Parameters:
+    - alumno_id (int): ID del alumno
+    - actividad_id (int): ID de la actividad
+
+    Returns:
+    - EntregaResponse: Datos de la entrega
+
+    Raises:
+    - HTTPException(403): Si el usuario no tiene permisos
+    - HTTPException(404): Si no existe la entrega
+    """
     if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -536,6 +567,20 @@ async def obtener_entrega(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Obtiene los detalles completos de una entrega específica.
+    Los profesores pueden ver las entregas de sus asignaturas, los alumnos solo sus propias entregas.
+
+    Parameters:
+    - entrega_id (int): ID de la entrega a consultar
+
+    Returns:
+    - EntregaResponse: Datos completos de la entrega, incluyendo información de la actividad, asignatura y alumno
+
+    Raises:
+    - HTTPException(403): Si el usuario no tiene permisos para ver la entrega
+    - HTTPException(404): Si la entrega no existe
+    """
     # Comprobar que el usuario está logueado
     if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
         raise HTTPException(
@@ -577,164 +622,6 @@ async def obtener_entrega(
     
     return entrega
     
-    
-    
-    
-@router.post("/pruebaGemini", response_model=str)
-async def pruebaGemini(
-    prompt: str
-):
-    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-    response = client.models.generate_content(
-        model = "gemini-1.5-flash",
-        contents = [prompt])
-    return response.text
-
-@router.get("/ocr/{entrega_id}")
-async def obtener_ocr_entrega(
-    entrega_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user),
-    servicio: str = "default"  # Parámetro opcional para especificar el servicio
-):
-    """
-    Procesa la imagen de una entrega existente usando OCR y actualiza el texto en la base de datos.
-    Permite especificar el servicio OCR a utilizar mediante el parámetro 'servicio'.
-
-    Parameters:
-    - entrega_id (int): ID de la entrega
-    - servicio (str, opcional): Servicio OCR a utilizar ('uco', 'azure' o 'default')
-
-    Returns:
-    - str: Texto extraído de la imagen
-
-    Raises:
-    - HTTPException(404): Si la entrega no existe o no tiene imagen
-    - HTTPException(403): Si el usuario no tiene permisos
-    - HTTPException(500): Si hay un error al procesar la imagen
-    """
-    # Obtener la entrega
-    query = select(Entrega).where(Entrega.id == entrega_id)
-    result = await db.execute(query)
-    entrega = result.scalar_one_or_none()
-    
-    if not entrega:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Entrega no encontrada"
-        )
-    
-    if not entrega.imagen:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="La entrega no tiene imagen"
-        )
-    
-    # Verificar permisos
-    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.id != entrega.alumno_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para ver esta entrega"
-        )
-    
-    try:
-        # Crear un UploadFile a partir de la imagen almacenada
-        file_like = io.BytesIO(entrega.imagen)
-        upload_file = UploadFile(
-            filename=entrega.nombre_archivo or "imagen.jpg",
-            file=file_like,
-            content_type=entrega.tipo_imagen or "image/jpeg"
-        )
-        
-        # Seleccionar el servicio OCR
-        if servicio == "uco" or servicio == "qwen3b":
-            ocr_service = QWEN3BOCRService()
-        elif servicio == "azure":
-            ocr_service = AzureOCRService()
-        elif servicio == "ollama" or servicio == "gemma3":
-            ocr_service = OllamaGemma3OCRService()
-        else:
-            # Usar el servicio por defecto
-            ocr_service = OCRServiceFactory.get_ocr_service()
-        
-        # Procesar la imagen
-        texto = await ocr_service.process_image(upload_file, current_user)
-        
-        # Actualizar el texto de la entrega
-        entrega.texto_ocr = texto
-        await db.commit()
-        await db.refresh(entrega)
-        
-        return texto
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al procesar la imagen: {str(e)}"
-        )
-
-@router.put("/evaluar-ocr/{entrega_id}", response_model=EntregaResponse)
-async def evaluar_entrega(
-    entrega_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user),
-):
-    # comprobar que el usuario esta logueado
-    if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para evaluar entregas"
-        )
-    
-    #obtener la entrega
-    query = select(Entrega).where(Entrega.id == entrega_id and Entrega.alumno_id == current_user.id)
-    result = await db.execute(query)
-    entrega = result.scalar_one_or_none()
-    
-    #obtener la actividad
-    query = select(Actividad).where(Actividad.id == entrega.actividad_id)
-    result = await db.execute(query)
-    actividad = result.scalar_one_or_none()
-    
-   
-    
-    if entrega.imagen is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No has subido ningún archivo"
-        )
-
-    #obtener el texto de la imagen
-    texto = await obtener_ocr_entrega(entrega_id, db, current_user)
-
-    
-    #conectar con la API y mandarle la entrega
-    try:
-
-        # Enviar el texto al LM para evaluación
-        #TODO: Cambiar la URL por la del server de la uco y el puerto que no se cual es 
-        lm_response = requests.post(
-            "http://192.168.117.196:5000/v1/chat/completions",  # Ajusta la URL según tu configuración de LMStudio
-            json={
-
-                "messages": [
-                {"role": "system", "content": f"Eres un evaluador de actividades, evalúa la siguiente solución y proporciona feedback constructivo en base al enunciado siguiente: {actividad.descripcion}"},
-                {"role": "user", "content": f"{texto}"}
-                ],
-                "temperature": 0.7,
-            }
-        )
-        
-        # Verificar si la respuesta fue exitosa
-        lm_response.raise_for_status()  # Lanza una excepción si la respuesta no es exitosa
-
-        entrega.comentarios = lm_response.json()["choices"][0]["message"]["content"]
-        # Actualizar la entrega en la base de datos
-        await db.commit()
-        await db.refresh(entrega)
-        return entrega
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en el proceso de evaluación: {str(e)}")
 
 from abc import ABC, abstractmethod
 
@@ -869,29 +756,27 @@ class OllamaEvaluador(EvaluadorIA):
             Para feedback más detallado y diverso: mantén los actuales o aumenta ligeramente
 """
 
-
-class EvaluadorFactory:
-    _evaluadores = {
-        "gemini": GeminiEvaluador,
-        "gpt": GPTEvaluador,
-        "ollama": OllamaEvaluador
-    }
-
-    @classmethod
-    def crear_evaluador(cls) -> EvaluadorIA:
-        modelo = os.getenv("MODEL_IA", "gemini").lower()
-        print(f"Usando modelo: {modelo}")
-        evaluador_class = cls._evaluadores.get(modelo, GPTEvaluador)
-        return evaluador_class()
-
-
-
 @router.put("/evaluar-texto/{entrega_id}", response_model=EntregaResponse)
 async def evaluar_texto(
     entrega_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    """
+    Evalúa automáticamente el texto de una entrega usando IA.
+    Disponible para profesores y alumnos.
+
+    Parameters:
+    - entrega_id (int): ID de la entrega
+
+    Returns:
+    - EntregaResponse: Entrega actualizada con la evaluación
+
+    Raises:
+    - HTTPException(404): Si la entrega no existe
+    - HTTPException(403): Si el usuario no tiene permisos
+    - HTTPException(500): Si hay un error en la evaluación
+    """
     # Verificaciones de permisos
     if current_user.tipo_usuario != TipoUsuario.PROFESOR and current_user.tipo_usuario != TipoUsuario.ALUMNO:
         raise HTTPException(
@@ -953,8 +838,18 @@ async def obtener_entregas_alumno_asignatura(
 ):
     """
     Obtiene todas las entregas de un alumno en una asignatura específica.
-    Los profesores pueden ver las entregas de cualquier alumno en sus asignaturas.
-    Los alumnos solo pueden ver sus propias entregas.
+    Los profesores pueden ver todas las entregas, los alumnos solo las suyas.
+
+    Parameters:
+    - alumno_id (int): ID del alumno
+    - asignatura_id (int): ID de la asignatura
+
+    Returns:
+    - List[EntregaResponse]: Lista de entregas del alumno en la asignatura
+
+    Raises:
+    - HTTPException(403): Si el usuario no tiene permisos
+    - HTTPException(404): Si no existen entregas
     """
     # Verificar permisos
     if current_user.tipo_usuario == TipoUsuario.ALUMNO and current_user.id != alumno_id:
@@ -1011,16 +906,16 @@ async def descargar_imagen_entrega(
 ):
     """
     Descarga la imagen de una entrega específica.
-    Solo el profesor de la asignatura o el alumno que hizo la entrega pueden descargar la imagen.
+    El profesor de la asignatura y el alumno que realizó la entrega pueden descargar la imagen.
 
     Parameters:
     - entrega_id (int): ID de la entrega
 
     Returns:
-    - Response: Imagen con headers para descarga
+    - Response: Imagen de la entrega como archivo descargable
 
     Raises:
-    - HTTPException(404): Si la entrega no existe o no tiene imagen
+    - HTTPException(404): Si la entrega o la imagen no existe
     - HTTPException(403): Si el usuario no tiene permisos
     """
     # Obtener la entrega con sus relaciones
