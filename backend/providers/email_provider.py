@@ -80,11 +80,6 @@ class EmailProvider:
                     <p style="font-size: 14px; color: #666; margin-top: 15px;">Introduce este código en la aplicación para crear una nueva contraseña</p>
                 </div>
                 
-                <p>Puedes usar este enlace para abrir la aplicación:</p>
-                <p style="text-align: center;">
-                    <a href="{mobile_reset_url}" style="display: inline-block; padding: 10px 20px; background-color: #4a6ee0; color: white; text-decoration: none; border-radius: 5px;">Abrir en la aplicación</a>
-                </p>
-                
                 <p>Este código expirará en 30 minutos.</p>
                 <p>Si no solicitaste este cambio, puedes ignorar este correo y tu contraseña permanecerá sin cambios.</p>
                 <p>Saludos,<br>El equipo de EduCode</p>
@@ -103,8 +98,6 @@ class EmailProvider:
         TU CÓDIGO DE RECUPERACIÓN ES: {reset_token}
         
         Introduce este código en la aplicación para crear una nueva contraseña.
-        
-        Puedes usar este enlace para abrir la aplicación: {mobile_reset_url}
         
         Este código expirará en 30 minutos.
         
