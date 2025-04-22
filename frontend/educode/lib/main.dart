@@ -6,7 +6,7 @@ import 'package:educode/features/courses/data/services/submission_service.dart';
 import 'package:educode/features/courses/presentation/providers/activity_provider.dart';
 import 'package:educode/features/courses/presentation/providers/enrollment_provider.dart';
 import 'package:educode/features/courses/presentation/providers/submission_provider.dart';
-import 'package:educode/features/courses/presentation/views/student_activity_submission_page.dart';
+import 'package:educode/features/courses/presentation/views/student_activity_submission_view.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';

@@ -6,7 +6,7 @@ import 'package:educode/features/courses/domain/models/activity_model.dart';
 import 'package:educode/features/courses/domain/models/submission_model.dart';
 import 'package:educode/features/courses/presentation/providers/activity_provider.dart';
 import 'package:educode/features/courses/presentation/providers/submission_provider.dart';
-import 'package:educode/features/courses/presentation/views/student_activity_submission_page.dart';
+import 'package:educode/features/courses/presentation/views/student_activity_submission_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/annotations.dart';

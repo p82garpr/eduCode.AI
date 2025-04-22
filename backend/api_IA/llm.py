@@ -1,10 +1,15 @@
+"""
+conda activate venvOCR
+export PYTHONPATH=/opt/data/p82garpr/venv_packages:$PYTHONPATH
+python -m uvicorn apiLLM:app --host 0.0.0.0 --port 8001
+"""
+
 from typing import Union, Dict, Any, List
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import json
 import requests
 import logging
-import uvicorn
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -198,6 +203,7 @@ def chat_with_llm(llm_name: str, item: Item):
 
 # Para ejecutar directamente con uvicorn
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run("apiLLM:app", host="0.0.0.0", port=8001, reload=True)
 
 

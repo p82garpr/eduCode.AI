@@ -34,22 +34,28 @@ class AuthProvider extends ChangeNotifier {
         throw AuthException('No se pudo obtener el token de autenticación');
       }
 
-      _currentUser = await _getUserInfoWithRetry(_token!);
+      try {
+        _currentUser = await _getUserInfoWithRetry(_token!);
+        
+        // Solo guardar en storage si obtuvimos el usuario correctamente
+        await _secureStorage.saveToken(_token!);
+        await _secureStorage.saveUserInfo(
+          id: _currentUser!.id.toString(),
+          type: _currentUser!.tipoUsuario,
+          name: _currentUser!.nombre,
+          email: _currentUser!.email,
+          lastName: _currentUser!.apellidos,
+        );
 
-      // Guardar información en el almacenamiento seguro
-      await _secureStorage.saveToken(_token!);
-      await _secureStorage.saveUserInfo(
-        id: _currentUser!.id.toString(),
-        type: _currentUser!.tipoUsuario,
-        name: _currentUser!.nombre,
-        email: _currentUser!.email,
-        lastName: _currentUser!.apellidos,
-      );
-
-      _isLoading = false;
-      _retryAttempts = 0;
-      notifyListeners();
-      return true;
+        _isLoading = false;
+        _retryAttempts = 0;
+        notifyListeners();
+        return true;
+      } catch (e) {
+        // Si falla al obtener la info del usuario, limpiar todo
+        await _handleAuthError();
+        throw AuthException('Error al obtener información del usuario: ${e.toString()}');
+      }
     } catch (e) {
       _error = e.toString();
       _isLoading = false;
@@ -100,17 +106,22 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<UserModel> _getUserInfoWithRetry(String token) async {
+    _retryAttempts = 0;
     while (_retryAttempts < maxRetryAttempts) {
       try {
         final user = await _authService.getUserInfo(token);
-        _retryAttempts = 0;
-        return user;
+        if (user != null) {
+          _retryAttempts = 0;
+          return user;
+        }
+        throw AuthException('La respuesta del servidor está vacía');
       } catch (e) {
         _retryAttempts++;
         if (_retryAttempts >= maxRetryAttempts) {
-          rethrow;
+          throw AuthException('No se pudo obtener la información del usuario después de ${maxRetryAttempts} intentos');
         }
-        await Future.delayed(Duration(seconds: _retryAttempts));
+        // Esperar antes de reintentar, con tiempo exponencial
+        await Future.delayed(Duration(seconds: _retryAttempts * 2));
       }
     }
     throw AuthException('No se pudo obtener la información del usuario después de varios intentos');
@@ -119,8 +130,9 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _handleAuthError() async {
     _token = null;
     _currentUser = null;
-    await _secureStorage.clearAll();
+    _error = null;
     _retryAttempts = 0;
+    await _secureStorage.clearAll();
     notifyListeners();
   }
 

@@ -93,21 +93,21 @@ class OllamaEvaluador(EvaluadorIA):
     async def evaluar(self, prompt: str, actividad: Actividad, solucion: str) -> tuple[str, float]:
         try:
             # Configurar la URL de tu API Multi-LLM
-            api_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
-            model = os.getenv("OLLAMA_MODEL", "llama3")
+            api_url = os.getenv("OLLAMA_API_URL", "http://localhost:8001")
+            model = os.getenv("OLLAMA_MODEL", "gemma3:12b")
             
             # Hacer la petición a la API
             payload = {
                 "model": model,
-                "messages": [
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": solucion}
-                ],
-                "stream": False
+                "prompt": prompt,
+                "max_tokens": 4096,
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "top_k": 40
             }
             
             response = requests.post(
-                f"{api_url}/api/chat",
+                f"{api_url}/chat/{model}",
                 json=payload
             )
             
@@ -115,8 +115,8 @@ class OllamaEvaluador(EvaluadorIA):
             
             # Extraer la respuesta del formato
             response_data = response.json()
-            if "message" in response_data and "content" in response_data["message"]:
-                response_text = response_data["message"]["content"]
+            if "response" in response_data:
+                response_text = response_data["response"]
                 nota = self.extraer_nota(response_text)
                 return response_text, nota
             else:

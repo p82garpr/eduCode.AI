@@ -1,3 +1,9 @@
+"""
+conda activate venvOCR
+export PYTHONPATH=/opt/data/p82garpr/venv_packages:$PYTHONPATH
+python -m uvicorn ocr:app --host 0.0.0.0
+"""
+
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from PIL import Image
 import io
@@ -97,12 +103,12 @@ def process_ollama_response(image: Image.Image, model_name: str):
         ollama_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
         
         payload = {
-            "model": "gemma:4b",
-            "prompt": "transcript the text in the image. Preserve all formatting, indentation, and whitespace exactly as shown in the image. Do not add any explanations or markdown, only output the exact text with its original formatting.",
+            "model": "gemma3:4b",
+            "prompt": "transcript the text in the image. Do not add any explanations or markdown.",
             "stream": False,
             "options": {
                 "temperature": 0.1,  # Temperatura baja para mantener la precisión
-                "num_predict": 1024  # Aumentado para manejar textos más largos
+                "num_predict": 2048  # Aumentado para manejar textos más largos
             },
             "images": [img_str]
         }
