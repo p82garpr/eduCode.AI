@@ -220,6 +220,26 @@ async def crear_entrega(
                 detail="Actividad no encontrada"
             )
 
+        # VALIDACIÓN CP-54: Verificar que el alumno esté inscrito en la asignatura de la actividad
+        query = select(Inscripcion).where(
+            Inscripcion.alumno_id == current_user.id,
+            Inscripcion.asignatura_id == actividad.asignatura_id
+        )
+        result = await db.execute(query)
+        inscripcion = result.scalar_one_or_none()
+        if not inscripcion:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No estás inscrito en la asignatura de esta actividad"
+            )
+
+        # VALIDACIÓN CP-55: Verificar que la fecha de entrega no esté vencida
+        if actividad.fecha_entrega < datetime.utcnow():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La fecha de entrega de la actividad ya ha vencido"
+            )
+
         # Verificar si ya existe una entrega
         query = select(Entrega).where(
             Entrega.actividad_id == actividad_id,
@@ -273,6 +293,8 @@ async def crear_entrega(
         
         return entrega
         
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error detallado en crear_entrega: {str(e)}")
         await db.rollback()

@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 from datetime import datetime, timedelta
 import io
 from passlib.context import CryptContext
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 
 pytestmark = pytest.mark.asyncio
@@ -329,4 +329,143 @@ async def test_obtener_entregas_alumno_otro_alumno(
     )
     
     assert response.status_code == status.HTTP_403_FORBIDDEN
-    assert "No tienes permiso" in response.json()["detail"] 
+    assert "No tienes permiso" in response.json()["detail"]
+
+async def test_crear_entrega_sin_inscripcion(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    asignatura_profesor: Asignatura,
+    actividad_prueba: Actividad
+):
+    """Verifica que un alumno no inscrito no pueda crear una entrega"""
+    # Crear un alumno no inscrito
+    alumno_no_inscrito = Usuario(
+        nombre="AlumnoNoInscrito",
+        apellidos="Test",
+        email="alumno_no_inscrito@test.com",
+        contrasena=get_password_hash("testpassword"),
+        tipo_usuario=TipoUsuario.ALUMNO
+    )
+    db_session.add(alumno_no_inscrito)
+    await db_session.commit()
+    await db_session.refresh(alumno_no_inscrito)
+    token_no_inscrito = create_access_token(data={"sub": alumno_no_inscrito.email})
+
+    # Intentar crear una entrega
+    img = Image.new('RGB', (60, 30), color='blue')
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='JPEG')
+    img_bytes.seek(0)
+    files = {"imagen": ("test.jpg", img_bytes, "image/jpeg")}
+    data = {"textoOcr": "print('Hola mundo')"}
+    response = await async_client.post(
+        f"/api/v1/entregas/{actividad_prueba.id}/entrega",
+        headers={"Authorization": f"Bearer {token_no_inscrito}"},
+        files=files,
+        data=data
+    )
+
+    assert response.status_code in (status.HTTP_403_FORBIDDEN, status.HTTP_400_BAD_REQUEST)
+
+async def test_crear_entrega_actividad_vencida(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    alumno: Usuario,
+    asignatura_profesor: Asignatura
+):
+    """Verifica que no se pueda crear una entrega para una actividad vencida"""
+    # Crear una actividad con fecha de entrega pasada
+    actividad_vencida = Actividad(
+        titulo="Actividad Vencida",
+        descripcion="No se debe permitir entrega",
+        fecha_entrega=datetime.utcnow() - timedelta(days=1),
+        asignatura_id=asignatura_profesor.id,
+        lenguaje_programacion="Python",
+        parametros_evaluacion="Correctitud"
+    )
+    db_session.add(actividad_vencida)
+    await db_session.commit()
+    await db_session.refresh(actividad_vencida)
+    token_alumno = create_access_token(data={"sub": alumno.email})
+
+    img = Image.new('RGB', (60, 30), color='green')
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='JPEG')
+    img_bytes.seek(0)
+    files = {"imagen": ("test.jpg", img_bytes, "image/jpeg")}
+    data = {"textoOcr": "print('Intento fuera de tiempo')"}
+    response = await async_client.post(
+        f"/api/v1/entregas/{actividad_vencida.id}/entrega",
+        headers={"Authorization": f"Bearer {token_alumno}"},
+        files=files,
+        data=data
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+async def test_crear_entrega_duplicada(
+    async_client: AsyncClient,
+    token_alumno: str,
+    actividad_prueba: Actividad,
+    inscripcion_alumno: Inscripcion
+):
+    """Verifica que un alumno no pueda crear dos entregas para la misma actividad"""
+    # Primera entrega
+    img1 = Image.new('RGB', (60, 30), color='red')
+    img_bytes1 = io.BytesIO()
+    img1.save(img_bytes1, format='JPEG')
+    img_bytes1.seek(0)
+    files1 = {"imagen": ("test1.jpg", img_bytes1, "image/jpeg")}
+    data1 = {"textoOcr": "print('Primera entrega')"}
+    response1 = await async_client.post(
+        f"/api/v1/entregas/{actividad_prueba.id}/entrega",
+        headers={"Authorization": f"Bearer {token_alumno}"},
+        files=files1,
+        data=data1
+    )
+    assert response1.status_code == status.HTTP_200_OK
+
+    # Segunda entrega (duplicada)
+    img2 = Image.new('RGB', (60, 30), color='red')
+    img_bytes2 = io.BytesIO()
+    img2.save(img_bytes2, format='JPEG')
+    img_bytes2.seek(0)
+    files2 = {"imagen": ("test2.jpg", img_bytes2, "image/jpeg")}
+    data2 = {"textoOcr": "print('Segunda entrega')"}
+    response2 = await async_client.post(
+        f"/api/v1/entregas/{actividad_prueba.id}/entrega",
+        headers={"Authorization": f"Bearer {token_alumno}"},
+        files=files2,
+        data=data2
+    )
+    assert response2.status_code == status.HTTP_400_BAD_REQUEST
+    assert "Ya existe una entrega" in response2.json()["detail"]
+
+
+
+async def test_procesar_ocr(
+    async_client: AsyncClient,
+    token_alumno: str
+):
+    """Verifica que el sistema pueda extraer texto de imágenes mediante OCR """
+    # Crear una imagen simple con texto usando PIL
+    img = Image.new('RGB', (200, 60), color='white')
+    d = ImageDraw.Draw(img)
+    # Usar una fuente por defecto
+    texto = "Hola OCR"
+    d.text((10, 10), texto, fill=(0, 0, 0))
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='JPEG')
+    img_bytes.seek(0)
+
+    files = {"image": ("ocr_test.jpg", img_bytes, "image/jpeg")}
+    response = await async_client.post(
+        "/api/v1/entregas/ocr/process-azure",
+        headers={"Authorization": f"Bearer {token_alumno}"},
+        files=files
+    )
+    assert response.status_code == status.HTTP_200_OK
+    ocr_text = response.json() if isinstance(response.json(), str) else response.text
+    # No exigimos coincidencia exacta, pero debe contener al menos parte del texto
+    assert "Hola" in ocr_text or "OCR" in ocr_text
