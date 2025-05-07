@@ -70,7 +70,12 @@ class SubjectsProvider extends ChangeNotifier {
       _subjects = [..._subjects, newSubject];
       notifyListeners();
     } catch (e) {
-      _error = 'Error al crear la asignatura';
+      debugPrint('Error en createSubject: $e');
+      if (e is SubjectException) {
+        _error = e.toString();
+      } else {
+        _error = 'Error al crear la asignatura';
+      }
       notifyListeners();
       throw Exception(_error);
     }

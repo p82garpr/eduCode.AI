@@ -11,7 +11,7 @@
 				}
 			],
 			"type" : "UNINITIALIZED",
-			"value" : "x86_64"
+			"value" : "x86"
 		},
 		{
 			"name" : "ANDROID_NDK",
@@ -63,7 +63,7 @@
 				}
 			],
 			"type" : "UNINITIALIZED",
-			"value" : "x86_64"
+			"value" : "x86"
 		},
 		{
 			"name" : "CMAKE_ANDROID_NDK",
@@ -151,7 +151,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "c:/Users/Usuario/Documents/proyectos/eduCode.AI/frontend/educode/android/app/.cxx/RelWithDebInfo/428h514h/x86_64"
+			"value" : "c:/Users/Usuario/Documents/proyectos/eduCode.AI/frontend/educode/android/app/.cxx/RelWithDebInfo/428h514h/x86"
 		},
 		{
 			"name" : "CMAKE_CACHE_MAJOR_VERSION",
@@ -527,7 +527,7 @@
 				}
 			],
 			"type" : "FILEPATH",
-			"value" : "CMAKE_DLLTOOL-NOTFOUND"
+			"value" : "C:/Strawberry/c/bin/dlltool.exe"
 		},
 		{
 			"name" : "CMAKE_ERROR_DEPRECATED",
@@ -751,7 +751,7 @@
 				}
 			],
 			"type" : "UNINITIALIZED",
-			"value" : "C:\\Users\\Usuario\\Documents\\proyectos\\eduCode.AI\\frontend\\educode\\build\\app\\intermediates\\cxx\\RelWithDebInfo\\428h514h\\obj\\x86_64"
+			"value" : "C:\\Users\\Usuario\\Documents\\proyectos\\eduCode.AI\\frontend\\educode\\build\\app\\intermediates\\cxx\\RelWithDebInfo\\428h514h\\obj\\x86"
 		},
 		{
 			"name" : "CMAKE_LINKER",
@@ -1023,7 +1023,7 @@
 				}
 			],
 			"type" : "UNINITIALIZED",
-			"value" : "C:\\Users\\Usuario\\Documents\\proyectos\\eduCode.AI\\frontend\\educode\\build\\app\\intermediates\\cxx\\RelWithDebInfo\\428h514h\\obj\\x86_64"
+			"value" : "C:\\Users\\Usuario\\Documents\\proyectos\\eduCode.AI\\frontend\\educode\\build\\app\\intermediates\\cxx\\RelWithDebInfo\\428h514h\\obj\\x86"
 		},
 		{
 			"name" : "CMAKE_SHARED_LINKER_FLAGS",
@@ -1331,7 +1331,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "C:/Users/Usuario/Documents/proyectos/eduCode.AI/frontend/educode/android/app/.cxx/RelWithDebInfo/428h514h/x86_64"
+			"value" : "C:/Users/Usuario/Documents/proyectos/eduCode.AI/frontend/educode/android/app/.cxx/RelWithDebInfo/428h514h/x86"
 		},
 		{
 			"name" : "Project_IS_TOP_LEVEL",

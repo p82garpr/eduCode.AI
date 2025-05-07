@@ -80,6 +80,7 @@ if __name__ == "__main__":
     }
     
     # Iniciar servidor con HTTPS
+    
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
@@ -94,5 +95,18 @@ if __name__ == "__main__":
         forwarded_allow_ips="*",
         workers=1  # Usar un solo worker para evitar problemas de concurrencia
     )
+    
+    
+    
+    """
+    # Para ejecutar el servidor con HTTP
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True
+    )
+    
+    """
     
     # uvicorn main:app --host 0.0.0.0 --port 8000 --ssl-keyfile key.pem --ssl-certfile cert.pem --reload

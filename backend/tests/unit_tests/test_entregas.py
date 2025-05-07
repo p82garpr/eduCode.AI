@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import io
 from passlib.context import CryptContext
 from PIL import Image, ImageDraw, ImageFont
@@ -73,7 +73,7 @@ async def actividad_prueba(db_session: AsyncSession, asignatura_profesor: Asigna
     actividad = Actividad(
         titulo="Actividad Test",
         descripcion="Descripción de la actividad de prueba",
-        fecha_entrega=datetime.utcnow() + timedelta(days=7),
+        fecha_entrega=datetime.now(UTC) + timedelta(days=7),
         asignatura_id=asignatura_profesor.id,
         lenguaje_programacion="Python",
         parametros_evaluacion="Correctitud del código, Eficiencia"
@@ -99,7 +99,7 @@ async def entrega_prueba(
         texto_ocr="def suma(a, b):\n    return a + b",
         actividad_id=actividad_prueba.id,
         alumno_id=alumno.id,
-        fecha_entrega=datetime.utcnow(),
+        fecha_entrega=datetime.now(UTC),
         calificacion=None,
         comentarios=None,
         imagen=imagen_prueba,
@@ -378,7 +378,7 @@ async def test_crear_entrega_actividad_vencida(
     actividad_vencida = Actividad(
         titulo="Actividad Vencida",
         descripcion="No se debe permitir entrega",
-        fecha_entrega=datetime.utcnow() - timedelta(days=1),
+        fecha_entrega=datetime.now(UTC) - timedelta(days=1),
         asignatura_id=asignatura_profesor.id,
         lenguaje_programacion="Python",
         parametros_evaluacion="Correctitud"

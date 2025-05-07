@@ -60,19 +60,25 @@ class SubjectsService {
           'Authorization': 'Bearer $token',
         },
         body: json.encode(data),
-      );
+      ).timeout(const Duration(seconds: 10), onTimeout: () {
+        throw SubjectException('Tiempo de espera agotado. Por favor, inténtalo de nuevo.');
+      });
 
-      if (response.statusCode == 201) {
-        return Subject.fromJson(json.decode(response.body));
+      // Imprimir para depuración
+      print('Respuesta createSubject: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return Subject.fromJson(json.decode(utf8.decode(response.bodyBytes)));
       } else if (response.statusCode == 403) {
         throw SubjectException('No tienes permisos para crear asignaturas');
       } else if (response.statusCode == 400) {
-        final error = json.decode(response.body);
+        final error = json.decode(utf8.decode(response.bodyBytes));
         throw SubjectException(error['detail'] ?? 'Los datos de la asignatura no son válidos');
       } else {
-        throw SubjectException('No pudimos crear la asignatura');
+        throw SubjectException('No pudimos crear la asignatura. Código: ${response.statusCode}');
       }
     } catch (e) {
+      print('Error en createSubject service: $e');
       if (e is SubjectException) rethrow;
       throw SubjectException('Error de conexión. Por favor, verifica tu internet');
     }

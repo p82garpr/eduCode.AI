@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, Text, func, LargeBinary
 from sqlalchemy.orm import relationship
 from database import Base
-from datetime import datetime
+from datetime import datetime, UTC
 
 class Entrega(Base):
     __tablename__ = "entregas"
@@ -12,7 +12,7 @@ class Entrega(Base):
     nombre_archivo = Column(String, nullable=True)  # Para guardar el nombre original del archivo
     comentarios = Column(String, nullable=True)
     calificacion = Column(Float, nullable=True)
-    fecha_entrega = Column(DateTime, default=datetime.utcnow)
+    fecha_entrega = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     actividad_id = Column(Integer, ForeignKey("actividades.id"))
     alumno_id = Column(Integer, ForeignKey("usuarios.id"))
     texto_ocr = Column(String, nullable=True)  # Nuevo campo para el texto OCR

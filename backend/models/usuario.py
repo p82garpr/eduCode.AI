@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Enum, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Enum, ForeignKey, DateTime, Index
 import enum
 import datetime
 from database import Base
@@ -23,7 +23,7 @@ class Usuario(Base):
     asignaturas = relationship("Asignatura", back_populates="profesor")
     inscripciones = relationship("Inscripcion", back_populates="alumno")
     entregas = relationship("Entrega", back_populates="alumno")
-    reset_tokens = relationship("PasswordResetToken", back_populates="usuario")
+    reset_tokens = relationship("PasswordResetToken", back_populates="usuario", cascade="all, delete-orphan")
 
 class PasswordResetToken(Base):
     """Clase para gestionar los tokens de restablecimiento de contraseña"""
@@ -31,8 +31,8 @@ class PasswordResetToken(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     token = Column(String, unique=True, index=True)
-    usuario_id = Column(Integer, ForeignKey("usuarios.id"))
-    expira = Column(DateTime(timezone=True))
+    usuario_id = Column(Integer, ForeignKey("usuarios.id", ondelete="CASCADE"))
+    expira = Column(DateTime(timezone=True), index=True)
     utilizado = Column(DateTime(timezone=True), nullable=True)
     
     usuario = relationship("Usuario", back_populates="reset_tokens")

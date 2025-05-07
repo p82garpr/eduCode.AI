@@ -1,0 +1,2 @@
+C:/Users/Usuario/Documents/proyectos/eduCode.AI/frontend/educode/android/app/.cxx/RelWithDebInfo/428h514h/x86/CMakeFiles/edit_cache.dir
+C:/Users/Usuario/Documents/proyectos/eduCode.AI/frontend/educode/android/app/.cxx/RelWithDebInfo/428h514h/x86/CMakeFiles/rebuild_cache.dir

@@ -59,7 +59,6 @@ async def obtener_entregas_actividad(
     # Verificar que la actividad existe
     query = (
         select(Actividad)
-        .join(Actividad.asignatura)
         .options(selectinload(Actividad.asignatura))
         .where(Actividad.id == actividad_id)
     )
@@ -232,9 +231,15 @@ async def crear_entrega(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No estás inscrito en la asignatura de esta actividad"
             )
+            
 
         # VALIDACIÓN CP-55: Verificar que la fecha de entrega no esté vencida
-        if actividad.fecha_entrega < datetime.utcnow():
+        # Asegurar que la fecha es aware (problema de SQLite)
+        fecha_entrega = actividad.fecha_entrega
+        if fecha_entrega.tzinfo is None:
+            fecha_entrega = fecha_entrega.replace(tzinfo=UTC)
+            
+        if fecha_entrega < datetime.now(UTC):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="La fecha de entrega de la actividad ya ha vencido"
@@ -271,7 +276,7 @@ async def crear_entrega(
             nombre_archivo = imagen.filename
         
         # Crear la fecha de entrega sin zona horaria
-        fecha_entrega = datetime.now(UTC).replace(tzinfo=None)
+        fecha_entrega = datetime.now(UTC)
         
         # Crear la entrega
         entrega = Entrega(
@@ -323,8 +328,15 @@ async def obtener_imagen_entrega(
     - HTTPException(404): Si la entrega o la imagen no existe
     - HTTPException(403): Si el usuario no tiene permisos
     """
-    # Obtener la entrega
-    query = select(Entrega).where(Entrega.id == entrega_id)
+    # Obtener la entrega con todas sus relaciones necesarias
+    query = (
+        select(Entrega)
+        .options(
+            selectinload(Entrega.actividad)
+            .selectinload(Actividad.asignatura)
+        )
+        .where(Entrega.id == entrega_id)
+    )
     result = await db.execute(query)
     entrega = result.scalar_one_or_none()
     
@@ -353,7 +365,7 @@ async def obtener_imagen_entrega(
         )
     
     # Determinar el tipo de contenido basado en el tipo_imagen
-    content_type = f"image/{entrega.tipo_imagen}" if entrega.tipo_imagen else "image/jpeg"
+    content_type = entrega.tipo_imagen if entrega.tipo_imagen else "image/jpeg"
     
     return Response(
         content=entrega.imagen,
@@ -558,6 +570,10 @@ async def obtener_entregas_alumno_actividad(
     query = (
         select(Entrega)
         .join(Entrega.actividad)
+        .options(
+            selectinload(Entrega.actividad).selectinload(Actividad.asignatura),
+            selectinload(Entrega.alumno)
+        )
         .where(
             and_(
                 Entrega.alumno_id == alumno_id,
@@ -807,7 +823,7 @@ async def evaluar_texto(
         )
     
     # Obtener la entrega y la actividad
-    query = select(Entrega).where(Entrega.id == entrega_id)
+    query = select(Entrega).options(selectinload(Entrega.actividad)).where(Entrega.id == entrega_id)
     result = await db.execute(query)
     entrega = result.scalar_one_or_none()
     
@@ -817,9 +833,7 @@ async def evaluar_texto(
             detail="Entrega no encontrada"
         )
     
-    query = select(Actividad).where(Actividad.id == entrega.actividad_id)
-    result = await db.execute(query)
-    actividad = result.scalar_one_or_none()
+    actividad = entrega.actividad
     
     if not actividad:
         raise HTTPException(
