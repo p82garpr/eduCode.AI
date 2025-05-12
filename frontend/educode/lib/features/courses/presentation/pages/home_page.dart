@@ -82,13 +82,39 @@ class _HomePageState extends State<HomePage> {
               color: Theme.of(context).colorScheme.onPrimary,
             ),
             onPressed: () {
-              context.read<AuthProvider>().logout();
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const LoginPage(),
-                  maintainState: false,
-                ),
+              showDialog(
+                context: context,
+                builder: (BuildContext context) {
+                  return AlertDialog(
+                    title: const Text('Cerrar sesión'),
+                    content: const Text('¿Estás seguro que deseas cerrar sesión?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Text(
+                          'Cancelar',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.secondary,
+                          ),
+                        ),
+                      ),
+                      FilledButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          context.read<AuthProvider>().logout();
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const LoginPage(),
+                              maintainState: false,
+                            ),
+                          );
+                        },
+                        child: const Text('Confirmar'),
+                      ),
+                    ],
+                  );
+                },
               );
             },
           ),

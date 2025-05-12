@@ -202,30 +202,65 @@ class _CoursesViewState extends State<CoursesView> with SingleTickerProviderStat
             physics: const BouncingScrollPhysics(),
             slivers: [
               SliverAppBar(
-                expandedHeight: 120.0,
+                expandedHeight: 140.0,
                 floating: false,
                 pinned: true,
                 backgroundColor: colors.primary,
                 actions: [
-                  AnimatedBuilder(
-                    animation: _fadeAnimation,
-                    builder: (context, child) => Opacity(
-                      opacity: _fadeAnimation.value,
-                      child: IconButton(
-                        icon: Icon(
-                          Icons.logout,
-                          color: colors.onPrimary,
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: AnimatedBuilder(
+                      animation: _fadeAnimation,
+                      builder: (context, child) => Opacity(
+                        opacity: _fadeAnimation.value,
+                        child: IconButton(
+                          icon: Icon(
+                            Icons.logout,
+                            color: colors.onPrimary,
+                            size: 24,
+                          ),
+                          tooltip: 'Cerrar sesión',
+                          style: IconButton.styleFrom(
+                            foregroundColor: colors.onPrimary,
+                            backgroundColor: colors.primary.withOpacity(0.2),
+                          ),
+                          onPressed: () {
+                            showDialog(
+                              context: context,
+                              builder: (BuildContext context) {
+                                return AlertDialog(
+                                  title: const Text('Cerrar sesión'),
+                                  content: const Text('¿Estás seguro que deseas cerrar sesión?'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.of(context).pop(),
+                                      child: Text(
+                                        'Cancelar',
+                                        style: TextStyle(
+                                          color: Theme.of(context).colorScheme.secondary,
+                                        ),
+                                      ),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () {
+                                        Navigator.of(context).pop();
+                                        context.read<AuthProvider>().logout();
+                                        Navigator.pushReplacement(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => const LoginPage(),
+                                            maintainState: false,
+                                          ),
+                                        );
+                                      },
+                                      child: const Text('Confirmar'),
+                                    ),
+                                  ],
+                                );
+                              },
+                            );
+                          },
                         ),
-                        onPressed: () {
-                          context.read<AuthProvider>().logout();
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const LoginPage(),
-                              maintainState: false,
-                            ),
-                          );
-                        },
                       ),
                     ),
                   ),
